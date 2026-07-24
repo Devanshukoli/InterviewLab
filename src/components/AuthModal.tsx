@@ -27,9 +27,28 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Listen for OAuth postMessage events from popup
+  // Listen for OAuth completion via postMessage, BroadcastChannel, and localStorage events
   useEffect(() => {
     if (!isOpen) return;
+
+    const handleAuthSuccess = (token: string, user: UserProfile) => {
+      if (token) {
+        localStorage.setItem('auth_token', token);
+      }
+      if (user) {
+        localStorage.setItem('user_profile', JSON.stringify(user));
+        onSuccess(user);
+        onClose();
+      }
+      setIsLoading(false);
+    };
+
+    const handleAuthError = (errMsg: string) => {
+      setError(errMsg || 'Google OAuth failed');
+      setIsLoading(false);
+    };
+
+    // 1. PostMessage listener
     const handleOAuthMessage = (event: MessageEvent) => {
       const origin = event.origin;
       if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
@@ -37,22 +56,65 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       }
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
         const { token, user } = event.data;
-        if (token) {
-          localStorage.setItem('auth_token', token);
-        }
-        if (user) {
-          onSuccess(user);
-          onClose();
-        }
-        setIsLoading(false);
+        handleAuthSuccess(token, user);
       } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
-        setError(event.data.error || 'Google OAuth failed');
-        setIsLoading(false);
+        handleAuthError(event.data.error);
       }
     };
 
+    // 2. BroadcastChannel listener
+    let bc: BroadcastChannel | null = null;
+    try {
+      if ('BroadcastChannel' in window) {
+        bc = new BroadcastChannel('oauth_channel');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+            handleAuthSuccess(event.data.token, event.data.user);
+          } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+            handleAuthError(event.data.error);
+          }
+        };
+      }
+    } catch (e) {
+      console.error('BroadcastChannel listener error:', e);
+    }
+
+    // 3. Storage event listener (fires when another tab/popup modifies localStorage)
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'oauth_auth_success' && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue);
+          if (parsed.token && parsed.user) {
+            localStorage.removeItem('oauth_auth_success');
+            handleAuthSuccess(parsed.token, parsed.user);
+          }
+        } catch (e) {}
+      }
+    };
+
+    // 4. Polling fallback in case events were missed
+    const pollInterval = setInterval(() => {
+      const oauthData = localStorage.getItem('oauth_auth_success');
+      if (oauthData) {
+        try {
+          const parsed = JSON.parse(oauthData);
+          if (parsed.token && parsed.user) {
+            localStorage.removeItem('oauth_auth_success');
+            handleAuthSuccess(parsed.token, parsed.user);
+          }
+        } catch (e) {}
+      }
+    }, 400);
+
     window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('message', handleOAuthMessage);
+      window.removeEventListener('storage', handleStorageChange);
+      if (bc) bc.close();
+      clearInterval(pollInterval);
+    };
   }, [isOpen, onSuccess, onClose]);
 
   if (!isOpen) return null;
@@ -98,16 +160,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       const urlJson = await urlRes.json();
 
       if (urlJson.success && urlJson.data?.configured && urlJson.data?.url) {
-        // Open Google OAuth Popup
-        const authWindow = window.open(
-          urlJson.data.url,
-          'google_oauth',
-          'width=550,height=650,scrollbars=yes'
-        );
-        if (!authWindow) {
-          setError('Popup blocked! Please allow popups for this site to sign in with Google.');
-          setIsLoading(false);
-        }
+        // Save current page URL so OAuth callback can redirect back
+        try {
+          sessionStorage.setItem('oauth_return_url', window.location.href);
+        } catch (e) {}
+
+        // Redirect current window directly to Google OAuth to avoid extra tab opening
+        window.location.href = urlJson.data.url;
         return;
       }
 
@@ -116,8 +175,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email,
-          name: name
+          email: email || 'devanshu.google@interviewops.io',
+          name: name || 'Devanshu Koli (Google)'
         })
       });
       const json = await res.json();
@@ -148,25 +207,25 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       onClick={handleBackdropClick}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn cursor-pointer"
     >
-      <div className="w-full max-w-md bg-[#0c0c0e] border border-zinc-800 rounded-xl shadow-2xl p-6 sm:p-8 space-y-6 relative cursor-default">
+      <div className="w-full max-w-md bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl p-6 sm:p-8 space-y-6 relative cursor-default">
         
         {/* Close Button */}
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors cursor-pointer p-1 rounded-md hover:bg-zinc-800"
+          className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           <X className="w-4 h-4" />
         </button>
 
         {/* Modal Title */}
         <div className="text-center space-y-2">
-          <div className="inline-flex w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-lg items-center justify-center text-white mb-1">
-            <ShieldCheck className="w-5 h-5 text-blue-400" />
+          <div className="inline-flex w-10 h-10 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg items-center justify-center text-zinc-900 dark:text-white mb-1">
+            <ShieldCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
           </div>
-          <h2 className="text-xl font-bold text-white tracking-tight">
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
             {mode === 'signin' ? 'Sign in to InterviewOps' : 'Create your account'}
           </h2>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
             {mode === 'signin' 
               ? 'Access your resume library and interview sessions' 
               : 'Start preparing for senior engineering interviews'}
@@ -177,10 +236,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         <button
           onClick={handleGoogleSignIn}
           disabled={isLoading}
-          className="w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 text-xs font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-3 transition-all cursor-pointer disabled:opacity-60"
+          className="w-full bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-3 transition-all cursor-pointer disabled:opacity-60 shadow-sm"
         >
           {isLoading ? (
-            <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+            <Loader2 className="w-4 h-4 text-blue-500 dark:text-blue-400 animate-spin" />
           ) : (
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -205,69 +264,69 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         </button>
 
         <div className="relative flex items-center justify-center">
-          <div className="border-t border-zinc-800 w-full"></div>
-          <span className="bg-[#0c0c0e] px-3 text-[10px] font-mono uppercase text-zinc-500 shrink-0">Or email</span>
+          <div className="border-t border-zinc-200 dark:border-zinc-800 w-full"></div>
+          <span className="bg-white dark:bg-[#0c0c0e] px-3 text-[10px] font-mono uppercase text-zinc-500 shrink-0">Or email</span>
         </div>
 
         {/* Email + Password Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'signup' && (
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-zinc-300">Full Name</label>
+              <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">Full Name</label>
               <div className="relative">
-                <UserIcon className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
+                <UserIcon className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-2.5" />
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Devanshu Koli"
-                  className="w-full bg-[#09090b] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
             </div>
           )}
 
           <div className="space-y-1">
-            <label className="text-[11px] font-medium text-zinc-300">Email Address</label>
+            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">Email Address</label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
+              <Mail className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-2.5" />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="architect@interviewops.io"
-                className="w-full bg-[#09090b] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-medium text-zinc-300">Password</label>
+            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">Password</label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
+              <Lock className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-2.5" />
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
-                className="w-full bg-[#09090b] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
               />
             </div>
           </div>
 
-          {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+          {error && <p className="text-xs text-red-500 dark:text-red-400 font-mono">{error}</p>}
 
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-white hover:bg-zinc-200 text-black text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-white/5 disabled:opacity-60"
+            className="w-full bg-zinc-900 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-black text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-60"
           >
             {isLoading ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 <span>Authenticating...</span>
               </>
             ) : (
@@ -284,14 +343,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           {mode === 'signin' ? (
             <span>
               Don't have an account?{' '}
-              <button onClick={() => setMode('signup')} className="text-zinc-200 font-semibold hover:underline cursor-pointer">
+              <button onClick={() => setMode('signup')} className="dark:text-zinc-200 font-semibold hover:underline cursor-pointer">
                 Sign Up
               </button>
             </span>
           ) : (
             <span>
               Already have an account?{' '}
-              <button onClick={() => setMode('signin')} className="text-zinc-200 font-semibold hover:underline cursor-pointer">
+              <button onClick={() => setMode('signin')} className="dark:text-zinc-200 font-semibold hover:underline cursor-pointer">
                 Sign In
               </button>
             </span>

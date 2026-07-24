@@ -46,12 +46,38 @@ export default function App() {
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   };
 
-  // Initial Fetching
+  // Initial Fetching & Global Auth Change Listeners
   useEffect(() => {
     checkCurrentUser();
     fetchResumes();
     fetchHistory();
     fetchProgress();
+
+    // Listen for storage changes across tabs/popups
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'auth_token' || e.key === 'oauth_auth_success') {
+        checkCurrentUser();
+      }
+    };
+
+    // Listen for BroadcastChannel oauth events
+    let bc: BroadcastChannel | null = null;
+    try {
+      if ('BroadcastChannel' in window) {
+        bc = new BroadcastChannel('oauth_channel');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+            checkCurrentUser();
+          }
+        };
+      }
+    } catch (e) {}
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      if (bc) bc.close();
+    };
   }, []);
 
   const checkCurrentUser = async () => {
@@ -374,7 +400,7 @@ export default function App() {
 
   // Authenticated View
   return (
-    <div className="flex h-screen w-screen bg-[#09090b] text-zinc-100 font-sans overflow-hidden">
+    <div className="flex h-screen w-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 font-sans overflow-hidden transition-colors duration-200">
       
       {/* Sidebar Navigation */}
       <Sidebar
@@ -387,18 +413,18 @@ export default function App() {
       />
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-[#09090b]">
+      <div className="flex-1 flex flex-col overflow-hidden bg-zinc-50 dark:bg-[#09090b] transition-colors duration-200">
         
         {/* Header Bar */}
-        <header className="h-14 border-b border-zinc-800/80 flex items-center justify-between px-6 sm:px-8 bg-[#09090b] shrink-0">
+        <header className="h-14 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between px-6 sm:px-8 bg-white dark:bg-[#09090b] shrink-0 transition-colors duration-200">
           <div className="text-xs text-zinc-500 font-mono">
-            InterviewOps / <span className="text-zinc-200 font-semibold">{activeTab.toUpperCase()}</span>
+            InterviewOps / <span className="text-zinc-900 dark:text-zinc-200 font-semibold">{activeTab.toUpperCase()}</span>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={() => setActiveTab('new-session')}
-              className="bg-white hover:bg-zinc-200 text-black text-xs font-bold px-4 py-1.5 rounded-lg transition-all cursor-pointer shadow-sm active:scale-95"
+              className="bg-zinc-900 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-black text-xs font-bold px-4 py-1.5 rounded-lg transition-all cursor-pointer shadow-sm active:scale-95"
             >
               + New Interview
             </button>
@@ -497,27 +523,27 @@ export default function App() {
 
       {/* Profile Modal */}
       {isProfileModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#0c0c0e] border border-zinc-800 rounded-xl p-6 space-y-4">
-            <h2 className="text-base font-bold text-white">User Profile</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 space-y-4 shadow-xl">
+            <h2 className="text-base font-bold text-zinc-900 dark:text-white">User Profile</h2>
             <div className="space-y-2 text-xs font-mono">
-              <div className="flex justify-between p-2 bg-[#09090b] rounded border border-zinc-800">
+              <div className="flex justify-between p-2 bg-zinc-100 dark:bg-[#09090b] rounded border border-zinc-200 dark:border-zinc-800">
                 <span className="text-zinc-500">Name</span>
-                <span className="text-zinc-200">{user.name}</span>
+                <span className="text-zinc-800 dark:text-zinc-200 font-semibold">{user?.name}</span>
               </div>
-              <div className="flex justify-between p-2 bg-[#09090b] rounded border border-zinc-800">
+              <div className="flex justify-between p-2 bg-zinc-100 dark:bg-[#09090b] rounded border border-zinc-200 dark:border-zinc-800">
                 <span className="text-zinc-500">Email</span>
-                <span className="text-zinc-200">{user.email}</span>
+                <span className="text-zinc-800 dark:text-zinc-200 font-semibold">{user?.email}</span>
               </div>
-              <div className="flex justify-between p-2 bg-[#09090b] rounded border border-zinc-800">
+              <div className="flex justify-between p-2 bg-zinc-100 dark:bg-[#09090b] rounded border border-zinc-200 dark:border-zinc-800">
                 <span className="text-zinc-500">Role</span>
-                <span className="text-zinc-200 uppercase">{user.role}</span>
+                <span className="text-zinc-800 dark:text-zinc-200 font-semibold uppercase">{user?.role}</span>
               </div>
             </div>
             <div className="flex justify-end pt-2">
               <button
                 onClick={() => setIsProfileModalOpen(false)}
-                className="bg-white text-black text-xs font-bold px-4 py-2 rounded-lg cursor-pointer"
+                className="bg-zinc-900 dark:bg-white text-white dark:text-black text-xs font-bold px-4 py-2 rounded-lg cursor-pointer"
               >
                 Close
               </button>
@@ -528,15 +554,15 @@ export default function App() {
 
       {/* Billing Coming Soon Modal */}
       {billingNoticeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#0c0c0e] border border-zinc-800 rounded-xl p-6 space-y-4 text-center">
-            <h2 className="text-base font-bold text-white">Pro Billing (Coming Soon)</h2>
-            <p className="text-xs text-zinc-400">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 space-y-4 text-center shadow-xl">
+            <h2 className="text-base font-bold text-zinc-900 dark:text-white">Pro Billing (Coming Soon)</h2>
+            <p className="text-xs text-zinc-600 dark:text-zinc-400">
               InterviewOps is currently free during beta access. Pro subscriptions will offer priority multi-agent LLM routing and collaborative team practice rooms.
             </p>
             <button
               onClick={() => setBillingNoticeOpen(false)}
-              className="bg-white text-black text-xs font-bold px-5 py-2 rounded-lg cursor-pointer"
+              className="bg-zinc-900 dark:bg-white text-white dark:text-black text-xs font-bold px-5 py-2 rounded-lg cursor-pointer"
             >
               Got it
             </button>

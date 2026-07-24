@@ -76,17 +76,44 @@ export class AuthController {
 
     if (!code || !clientId || !clientSecret) {
       res.send(`
+        <!DOCTYPE html>
         <html>
+          <head>
+            <title>Authentication Error</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+              .card { text-align: center; padding: 2rem; background: #18181b; border: 1px solid #27272a; border-radius: 12px; max-width: 400px; }
+              button { background: #27272a; color: #fff; border: 1px solid #3f3f46; padding: 8px 16px; border-radius: 6px; cursor: pointer; margin-top: 12px; font-size: 12px; }
+              button:hover { background: #3f3f46; }
+            </style>
+          </head>
           <body>
+            <div class="card">
+              <h3 style="color:#ef4444; margin-top:0;">Authentication Error</h3>
+              <p style="font-size:13px; color:#a1a1aa;">Missing OAuth code or Google client credentials.</p>
+              <button onclick="window.close()">Close Window</button>
+            </div>
             <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: 'Missing OAuth code or server client secrets' }, '*');
-                window.close();
-              } else {
-                window.location.href = '/';
-              }
+              const errorMsg = 'Missing OAuth code or server client secrets';
+              try {
+                if ('BroadcastChannel' in window) {
+                  const bc = new BroadcastChannel('oauth_channel');
+                  bc.postMessage({ type: 'OAUTH_AUTH_ERROR', error: errorMsg });
+                  bc.close();
+                }
+              } catch(e) {}
+              try {
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: errorMsg }, '*');
+                }
+              } catch(e) {}
+              try {
+                if (window.parent && window.parent !== window) {
+                  window.parent.postMessage({ type: 'OAUTH_AUTH_ERROR', error: errorMsg }, '*');
+                }
+              } catch(e) {}
+              setTimeout(function() { window.close(); }, 1500);
             </script>
-            <p>Authentication failed: Missing OAuth parameters or Google credentials.</p>
           </body>
         </html>
       `);
@@ -125,39 +152,137 @@ export class AuthController {
 
       const { user, token } = await AuthService.googleLogin(email, name);
 
+      res.cookie('auth_token', token, {
+        httpOnly: false,
+        path: '/',
+        maxAge: 7 * 24 * 3600 * 1000,
+        sameSite: 'lax'
+      });
+
       res.send(`
+        <!DOCTYPE html>
         <html>
+          <head>
+            <title>Authentication Successful</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+              .card { text-align: center; padding: 2rem; background: #18181b; border: 1px solid #27272a; border-radius: 12px; max-width: 400px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+              .spinner { border: 3px solid #27272a; border-top: 3px solid #3b82f6; border-radius: 50%; width: 28px; height: 28px; animation: spin 1s linear infinite; margin: 0 auto 1.25rem; }
+              @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+              button { background: #27272a; color: #fff; border: 1px solid #3f3f46; padding: 8px 16px; border-radius: 6px; cursor: pointer; margin-top: 12px; font-size: 12px; }
+              button:hover { background: #3f3f46; }
+            </style>
+          </head>
           <body>
+            <div class="card">
+              <div class="spinner"></div>
+              <h3 style="margin:0 0 8px 0; font-size:16px;">Authentication Successful</h3>
+              <p style="font-size:13px; color:#a1a1aa; margin:0 0 8px 0;">Signed in as <strong>${email}</strong>.</p>
+              <p style="font-size:12px; color:#71717a; margin:0 0 12px 0;">Redirecting back to your app session...</p>
+            </div>
             <script>
-              if (window.opener) {
-                window.opener.postMessage({
-                  type: 'OAUTH_AUTH_SUCCESS',
-                  token: ${JSON.stringify(token)},
-                  user: ${JSON.stringify(user)}
-                }, '*');
-                window.close();
-              } else {
-                window.location.href = '/';
+              const token = ${JSON.stringify(token)};
+              const user = ${JSON.stringify(user)};
+
+              // 1. Write to localStorage so app detects auth status
+              try {
+                localStorage.setItem('auth_token', token);
+                localStorage.setItem('user_profile', JSON.stringify(user));
+                localStorage.setItem('oauth_auth_success', JSON.stringify({ token, user, timestamp: Date.now() }));
+              } catch (e) {
+                console.error('LocalStorage write failed:', e);
               }
+
+              // 2. BroadcastChannel to notify main tab
+              try {
+                if ('BroadcastChannel' in window) {
+                  const bc = new BroadcastChannel('oauth_channel');
+                  bc.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, user });
+                  bc.close();
+                }
+              } catch (e) {
+                console.error('BroadcastChannel failed:', e);
+              }
+
+              // 3. PostMessage to opener / parent windows
+              try {
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, user }, '*');
+                }
+              } catch (e) {
+                console.error('postMessage opener failed:', e);
+              }
+
+              try {
+                if (window.parent && window.parent !== window) {
+                  window.parent.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, user }, '*');
+                }
+              } catch (e) {
+                console.error('postMessage parent failed:', e);
+              }
+
+              // 4. If opened as a popup with opener, close popup; otherwise redirect back in same window
+              setTimeout(function() {
+                let closed = false;
+                if (window.opener && window.opener !== window) {
+                  try {
+                    window.close();
+                    if (window.closed) {
+                      closed = true;
+                    }
+                  } catch (e) {}
+                }
+                if (!closed) {
+                  const returnUrl = sessionStorage.getItem('oauth_return_url') || '/';
+                  sessionStorage.removeItem('oauth_return_url');
+                  window.location.href = returnUrl;
+                }
+              }, 400);
             </script>
-            <p>Authentication successful. Closing window...</p>
           </body>
         </html>
       `);
     } catch (err: any) {
       console.error('❌ [Google OAuth Callback Error]:', err.message);
       res.send(`
+        <!DOCTYPE html>
         <html>
+          <head>
+            <title>Authentication Error</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+              .card { text-align: center; padding: 2rem; background: #18181b; border: 1px solid #27272a; border-radius: 12px; max-width: 400px; }
+              button { background: #27272a; color: #fff; border: 1px solid #3f3f46; padding: 8px 16px; border-radius: 6px; cursor: pointer; margin-top: 12px; font-size: 12px; }
+              button:hover { background: #3f3f46; }
+            </style>
+          </head>
           <body>
+            <div class="card">
+              <h3 style="color:#ef4444; margin-top:0;">Authentication Error</h3>
+              <p style="font-size:13px; color:#a1a1aa;">${err.message}</p>
+              <button onclick="window.close()">Close Window</button>
+            </div>
             <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: ${JSON.stringify(err.message)} }, '*');
-                window.close();
-              } else {
-                window.location.href = '/';
-              }
+              const errorMsg = ${JSON.stringify(err.message)};
+              try {
+                if ('BroadcastChannel' in window) {
+                  const bc = new BroadcastChannel('oauth_channel');
+                  bc.postMessage({ type: 'OAUTH_AUTH_ERROR', error: errorMsg });
+                  bc.close();
+                }
+              } catch (e) {}
+              try {
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: errorMsg }, '*');
+                }
+              } catch (e) {}
+              try {
+                if (window.parent && window.parent !== window) {
+                  window.parent.postMessage({ type: 'OAUTH_AUTH_ERROR', error: errorMsg }, '*');
+                }
+              } catch (e) {}
+              setTimeout(function() { window.close(); }, 2000);
             </script>
-            <p>Authentication error: ${err.message}</p>
           </body>
         </html>
       `);

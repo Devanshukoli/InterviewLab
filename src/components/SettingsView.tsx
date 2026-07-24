@@ -20,7 +20,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { UserProfile } from '../types';
-import { applyTheme } from '../lib/theme';
+import { applyTheme, getStoredTheme } from '../lib/theme';
 
 interface SettingsViewProps {
   user: UserProfile | null;
@@ -47,7 +47,16 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [email, setEmail] = useState(user?.email || 'architect@interviewops.io');
 
   // Appearance
-  const [appearance, setAppearance] = useState<'light' | 'dark' | 'system'>(user?.appearance || 'light');
+  const [appearance, setAppearance] = useState<'light' | 'dark' | 'system'>(() => user?.appearance || getStoredTheme());
+
+  useEffect(() => {
+    if (user?.appearance) {
+      setAppearance(user.appearance);
+      applyTheme(user.appearance);
+    } else {
+      applyTheme(getStoredTheme());
+    }
+  }, [user?.appearance]);
 
   // Security & 2FA State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -63,6 +72,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [isVerifying2FA, setIsVerifying2FA] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [copiedCodes, setCopiedCodes] = useState(false);
+  const [copiedSecret, setCopiedSecret] = useState(false);
   const [isSettingUp2FA, setIsSettingUp2FA] = useState(false);
 
   // Sessions State
@@ -457,53 +467,64 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
 
                   {/* 2FA Setup Flow Drawer */}
                   {setup2FAData && !twoFactorEnabled && (
-                    <div className="p-4 bg-zinc-50 dark:bg-[#09090b] border border-blue-200 dark:border-blue-900/60 rounded-xl space-y-4 animate-fadeIn">
-                      <div className="flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                        <span className="text-xs font-bold text-zinc-900 dark:text-white">Scan QR Code or Enter Key</span>
+                    <div className="p-6 bg-zinc-50 dark:bg-[#09090b] border border-blue-200 dark:border-blue-900/60 rounded-xl space-y-6 animate-fadeIn">
+                      <div className="flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800 pb-3">
+                        <span className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Scan QR Code or Enter Key</span>
                         <button type="button" onClick={() => setSetup2FAData(null)} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">Cancel</button>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                        <div className="p-3 bg-white rounded-lg border border-zinc-200 flex flex-col items-center justify-center">
+                      {/* Prominent Centered QR Code Box */}
+                      <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                        <div className="p-6 bg-white rounded-2xl border border-zinc-200 shadow-xl flex flex-col items-center justify-center mx-auto">
                           <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(setup2FAData.uri)}`} 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(setup2FAData.uri)}`} 
                             alt="2FA QR Code" 
-                            className="w-32 h-32"
+                            className="w-64 h-64 sm:w-80 sm:h-80 object-contain p-2 bg-white rounded-lg"
                           />
-                          <span className="text-[10px] text-zinc-500 mt-1">Scan with Authenticator App</span>
+                          <span className="text-xs font-bold text-zinc-800 mt-3 flex items-center justify-center gap-1.5">
+                            <QrCode className="w-4 h-4 text-blue-600" /> Scan with Authenticator App
+                          </span>
                         </div>
 
-                        <div className="space-y-2 text-xs">
-                          <span className="text-zinc-600 dark:text-zinc-400 block">Manual Secret Key:</span>
-                          <div className="p-2 bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded font-mono text-[11px] font-bold text-zinc-800 dark:text-zinc-200 tracking-wider flex items-center justify-between">
-                            <span>{setup2FAData.secret}</span>
+                        <p className="text-xs text-zinc-600 dark:text-zinc-400 max-w-md leading-relaxed">
+                          Open <strong>Google Authenticator</strong>, <strong>1Password</strong>, or <strong>Authy</strong> on your mobile device, scan the QR code above, and enter the generated 6-digit verification code below.
+                        </p>
+
+                        {/* Manual Secret Key */}
+                        <div className="w-full max-w-md space-y-1.5 text-left bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                          <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 block uppercase tracking-wider">Manual Secret Key</span>
+                          <div className="flex items-center justify-between font-mono text-xs font-bold text-zinc-900 dark:text-zinc-100 tracking-wider">
+                            <span className="break-all select-all">{setup2FAData.secret}</span>
                             <button
                               type="button"
-                              onClick={() => navigator.clipboard.writeText(setup2FAData.secret)}
-                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                              onClick={() => {
+                                navigator.clipboard.writeText(setup2FAData.secret);
+                                setCopiedSecret(true);
+                                setTimeout(() => setCopiedSecret(false), 2000);
+                              }}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 shrink-0 ml-2"
                             >
-                              Copy
+                              {copiedSecret ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                              <span>{copiedSecret ? 'Copied!' : 'Copy'}</span>
                             </button>
                           </div>
-                          <p className="text-[11px] text-zinc-500 leading-normal">
-                            Open Google Authenticator or 1Password, scan the code, and enter the 6-digit code generated.
-                          </p>
                         </div>
                       </div>
 
-                      <form onSubmit={handleVerify2FACode} className="pt-2 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
+                      {/* Verification Form */}
+                      <form onSubmit={handleVerify2FACode} className="pt-4 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
                         <input
                           type="text"
                           maxLength={6}
                           placeholder="6-digit code (e.g. 123456)"
                           value={totpCode}
                           onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                          className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-2 text-xs text-zinc-900 dark:text-zinc-100 font-mono text-center tracking-widest w-44 focus:outline-none focus:border-blue-500"
+                          className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-100 font-mono text-center tracking-widest w-full sm:w-52 focus:outline-none focus:border-blue-500"
                         />
                         <button
                           type="submit"
-                          disabled={isVerifying2FA}
-                          className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                          disabled={isVerifying2FA || totpCode.length < 6}
+                          className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-5 py-2.5 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
                         >
                           {isVerifying2FA ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                           <span>Verify & Enable</span>
@@ -511,7 +532,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                       </form>
 
                       {totpError && (
-                        <p className="text-xs text-red-600 dark:text-red-400 font-mono">{totpError}</p>
+                        <p className="text-xs text-red-600 dark:text-red-400 font-mono text-center">{totpError}</p>
                       )}
                     </div>
                   )}
