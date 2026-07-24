@@ -4,9 +4,18 @@ import { generateJwtToken } from '../../middleware/jwt.middleware';
 import { getSupabaseClient } from '../../services/supabase';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../middleware/error_handling';
 import { TotpService } from '../../services/totp';
+import crypto from 'crypto';
 
 let currentUserSession: User | null = null;
 
+interface MfaSession {
+  mfaToken: string;
+  userId: string;
+  email: string;
+  expiresAt: number;
+}
+
+const pendingMfaSessions = new Map<string, MfaSession>();
 export class AuthService {
   static getCurrentUser(): User | null {
     return currentUserSession;
@@ -14,6 +23,84 @@ export class AuthService {
 
   static setCurrentUser(user: User | null): void {
     currentUserSession = user;
+  }
+
+  static createMfaSession(user: User): { requires2FA: true; mfaToken: string; email: string } {
+    const mfaToken = 'mfa-' + crypto.randomBytes(16).toString('hex');
+    const session: MfaSession = {
+      mfaToken,
+      userId: user.id,
+      email: user.email,
+      expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes validity
+    };
+    pendingMfaSessions.set(mfaToken, session);
+    return {
+      requires2FA: true,
+      mfaToken,
+      email: user.email
+    };
+  }
+
+  static async verifyMfaLogin(mfaToken: string, code: string): Promise<{ user: User; token: string }> {
+    const mfaSession = pendingMfaSessions.get(mfaToken);
+    if (!mfaSession || Date.now() > mfaSession.expiresAt) {
+      if (mfaSession) pendingMfaSessions.delete(mfaToken);
+      throw new UnauthorizedError('2FA session expired. Please sign in again.');
+    }
+
+    const user = db.users.get(mfaSession.email);
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new BadRequestError('2FA is not enabled on this account.');
+    }
+
+    const cleanCode = code.trim().replace(/\s+/g, '');
+    let isValid = TotpService.verifyToken(cleanCode, user.twoFactorSecret);
+
+    // If TOTP verification failed, check if candidate code matches one of the user's single-use backup codes
+    if (!isValid && user.backupCodes && user.backupCodes.length > 0) {
+      const formattedCode = cleanCode.includes('-')
+        ? cleanCode.toLowerCase()
+        : `${cleanCode.substring(0, 4)}-${cleanCode.substring(4)}`.toLowerCase();
+
+      const backupIndex = user.backupCodes.findIndex(
+        bc => bc.toLowerCase() === cleanCode.toLowerCase() || bc.toLowerCase() === formattedCode
+      );
+
+      if (backupIndex !== -1) {
+        isValid = true;
+        // Consume the backup code
+        user.backupCodes.splice(backupIndex, 1);
+        try {
+          const supabase = getSupabaseClient();
+          if (supabase) {
+            await supabase
+              .from('profiles')
+              .update({ backup_codes: user.backupCodes })
+              .eq('email', user.email);
+          }
+        } catch (e) {
+          // Continue
+        }
+      }
+    }
+
+    if (!isValid) {
+      throw new UnauthorizedError('Invalid 6-digit 2FA code or backup code. Check your authenticator app and try again.');
+    }
+
+    pendingMfaSessions.delete(mfaToken);
+    currentUserSession = user;
+
+    db.userLogins.unshift({
+      id: 'log-' + Math.random().toString(36).substr(2, 9),
+      userId: user.id,
+      loginProvider: '2fa',
+      status: 'success',
+      loggedInAt: new Date().toISOString()
+    });
+
+    const token = generateJwtToken(user);
+    return { user, token };
   }
 
   static async register(email: string, name: string, plainPassword: string): Promise<{ user: User; token: string }> {
@@ -71,7 +158,13 @@ export class AuthService {
     };
   }
 
-  static async login(email: string, plainPassword: string): Promise<{ user: User; token: string }> {
+  static async login(email: string, plainPassword: string): Promise<{
+    user?: User;
+    token?: string;
+    requires2FA?: boolean;
+    mfaToken?: string;
+    email?: string
+  }> {
     let user = db.users.get(email);
 
     // If not in local db, attempt to lookup in Supabase
@@ -86,7 +179,10 @@ export class AuthService {
               email: data.email,
               passwordHash: data.password_hash || encryptPassword(plainPassword),
               name: data.name,
-              role: data.role || 'user'
+              role: data.role || 'user',
+              twoFactorEnabled: data.two_factor_enabled || false,
+              twoFactorSecret: data.two_factor_secret || undefined,
+              backupCodes: data.backup_codes || []
             };
             db.users.set(email, user);
           }
@@ -131,6 +227,11 @@ export class AuthService {
       }
     }
 
+    // Check if 2FA is enabled on user's account
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      return AuthService.createMfaSession(user);
+    }
+
     currentUserSession = user;
 
     // Record login entry
@@ -150,8 +251,32 @@ export class AuthService {
     };
   }
 
-  static async googleLogin(email: string, name: string): Promise<{ user: User; token: string }> {
+  static async googleLogin(email: string, name: string): Promise<{ user?: User; token?: string; requires2FA?: boolean; mfaToken?: string; email?: string }> {
     let user = db.users.get(email);
+
+    if (!user) {
+      try {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          const { data } = await supabase.from('profiles').select('*').eq('email', email).single();
+          if (data) {
+            user = {
+              id: data.id || 'usr-google-' + Math.random().toString(36).substr(2, 7),
+              email: data.email,
+              passwordHash: data.password_hash || '',
+              name: data.name || name,
+              role: data.role || 'user',
+              twoFactorEnabled: data.two_factor_enabled || false,
+              twoFactorSecret: data.two_factor_secret || undefined,
+              backupCodes: data.backup_codes || []
+            };
+            db.users.set(email, user);
+          }
+        }
+      } catch (e) {
+        // Continue
+      }
+    }
 
     if (!user) {
       user = {
@@ -176,6 +301,11 @@ export class AuthService {
       } catch (e) {
         // Ignore optional Supabase insertion errors
       }
+    }
+
+    // Check if 2FA is enabled on user's account
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      return AuthService.createMfaSession(user);
     }
 
     currentUserSession = user;
@@ -267,7 +397,7 @@ export class AuthService {
   }
 
   // 3. Verify & Enable 2FA
-  static async verifyAndEnable2FA(userId: string, code: string): Promise<{ backupCodes: string[] }> {
+  static async verifyAndEnable2FA(userId: string, code: string): Promise<{ user: User; backupCodes: string[] }> {
     let userObj: User | undefined;
     for (const u of db.users.values()) {
       if (u.id === userId) {
@@ -280,7 +410,7 @@ export class AuthService {
       throw new BadRequestError('2FA setup session expired or not initialized. Please click setup again.');
     }
 
-    const isValid = TotpService.verifyToken(code, userObj.pendingTwoFactorSecret);
+    const isValid = TotpService.verifyToken(code.trim(), userObj.pendingTwoFactorSecret);
     if (!isValid) {
       throw new BadRequestError('Invalid 6-digit verification code. Check your authenticator app time and try again.');
     }
@@ -308,11 +438,11 @@ export class AuthService {
       // Continue
     }
 
-    return { backupCodes };
+    return { user: userObj, backupCodes };
   }
 
   // 4. Disable 2FA
-  static async disable2FA(userId: string): Promise<void> {
+  static async disable2FA(userId: string): Promise<{ user: User }> {
     let userObj: User | undefined;
     for (const u of db.users.values()) {
       if (u.id === userId) {
@@ -345,12 +475,14 @@ export class AuthService {
     } catch (e) {
       // Continue
     }
+    
+    return { user: userObj };
   }
 
   // 5. Active Sessions Management
   static getActiveSessions(userId: string, currentToken?: string): UserSession[] {
     const sessions = db.userSessions.filter(s => s.userId === userId && s.isActive);
-    
+
     // Fallback if empty: create default active current session
     if (sessions.length === 0) {
       const defaultSession: UserSession = {

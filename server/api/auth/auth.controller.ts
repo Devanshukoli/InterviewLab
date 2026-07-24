@@ -37,7 +37,7 @@ export class AuthController {
 
     const host = req.get('host') || 'localhost:3000';
     const protocol = req.protocol || 'http';
-    const redirectUri = process.env.APP_URL 
+    const redirectUri = process.env.APP_URL
       ? `${process.env.APP_URL.replace(/\/$/, '')}/auth/callback`
       : `${protocol}://${host}/auth/callback`;
 
@@ -70,7 +70,7 @@ export class AuthController {
 
     const host = req.get('host') || 'localhost:3000';
     const protocol = req.protocol || 'http';
-    const redirectUri = process.env.APP_URL 
+    const redirectUri = process.env.APP_URL
       ? `${process.env.APP_URL.replace(/\/$/, '')}/auth/callback`
       : `${protocol}://${host}/auth/callback`;
 
@@ -150,7 +150,75 @@ export class AuthController {
       const email = userInfo.email;
       const name = userInfo.name || email.split('@')[0];
 
-      const { user, token } = await AuthService.googleLogin(email, name);
+      const authResult = await AuthService.googleLogin(email, name);
+
+      if (authResult.requires2FA) {
+        res.send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>2FA Verification Required</title>
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                .card { text-align: center; padding: 2rem; background: #18181b; border: 1px solid #27272a; border-radius: 12px; max-width: 400px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+                .spinner { border: 3px solid #27272a; border-top: 3px solid #3b82f6; border-radius: 50%; width: 28px; height: 28px; animation: spin 1s linear infinite; margin: 0 auto 1.25rem; }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <div class="spinner"></div>
+                <h3 style="margin:0 0 8px 0; font-size:16px;">Two-Factor Authentication Required</h3>
+                <p style="font-size:13px; color:#a1a1aa; margin:0 0 8px 0;">Google identity verified for <strong>${email}</strong>.</p>
+                <p style="font-size:12px; color:#71717a; margin:0 0 12px 0;">Redirecting to complete 2FA verification...</p>
+              </div>
+              <script>
+                const mfaToken = ${JSON.stringify(authResult.mfaToken)};
+                const email = ${JSON.stringify(email)};
+
+                try {
+                  localStorage.setItem('pending_mfa_session', JSON.stringify({ mfaToken, email }));
+                  if ('BroadcastChannel' in window) {
+                    const bc = new BroadcastChannel('oauth_channel');
+                    bc.postMessage({ type: 'OAUTH_REQUIRES_2FA', mfaToken, email });
+                    bc.close();
+                  }
+                } catch (e) {}
+
+                try {
+                  if (window.opener) {
+                    window.opener.postMessage({ type: 'OAUTH_REQUIRES_2FA', mfaToken, email }, '*');
+                  }
+                } catch (e) {}
+
+                try {
+                  if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({ type: 'OAUTH_REQUIRES_2FA', mfaToken, email }, '*');
+                  }
+                } catch (e) {}
+
+                setTimeout(function() {
+                  let closed = false;
+                  if (window.opener && window.opener !== window) {
+                    try {
+                      window.close();
+                      if (window.closed) closed = true;
+                    } catch (e) {}
+                  }
+                  if (!closed) {
+                    const returnUrl = sessionStorage.getItem('oauth_return_url') || '/';
+                    sessionStorage.removeItem('oauth_return_url');
+                    window.location.href = returnUrl;
+                  }
+                }, 400);
+              </script>
+            </body>
+          </html>
+        `);
+        return;
+      }
+
+      const { user, token } = authResult;
 
       res.cookie('auth_token', token, {
         httpOnly: false,
@@ -379,15 +447,32 @@ export class AuthController {
     const user = req.user || AuthService.getCurrentUser();
     const userId = user?.id || 'usr-default';
     const { code } = req.body;
-    const data = await AuthService.verifyAndEnable2FA(userId, code);
-    res.json({ success: true, data, message: '2FA enabled successfully' });
+    const { user: updatedUser, backupCodes } = await AuthService.verifyAndEnable2FA(userId, code);
+    res.json({ success: true, data: { user: updatedUser, backupCodes }, message: '2FA enabled successfully' });
+  });
+
+  static verifyLogin2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const { mfaToken, code } = req.body;
+    if (!mfaToken || !code) {
+      throw new BadRequestError('MFA session token and 6-digit verification code are required');
+    }
+    const data = await AuthService.verifyMfaLogin(mfaToken, code);
+
+    res.cookie('auth_token', data.token, {
+      httpOnly: false,
+      path: '/',
+      maxAge: 7 * 24 * 3600 * 1000,
+      sameSite: 'lax'
+    });
+
+    res.json({ success: true, data });
   });
 
   static disable2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const user = req.user || AuthService.getCurrentUser();
     const userId = user?.id || 'usr-default';
-    await AuthService.disable2FA(userId);
-    res.json({ success: true, message: '2FA disabled successfully' });
+    const { user: updatedUser } = await AuthService.disable2FA(userId);
+    res.json({ success: true, data: { user: updatedUser }, message: '2FA disabled successfully' });
   });
 
   static getSessions = catchAsync(async (req: Request, res: Response): Promise<void> => {
