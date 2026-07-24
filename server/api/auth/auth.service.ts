@@ -16,6 +16,7 @@ interface MfaSession {
 }
 
 const pendingMfaSessions = new Map<string, MfaSession>();
+
 export class AuthService {
   static getCurrentUser(): User | null {
     return currentUserSession;
@@ -158,13 +159,7 @@ export class AuthService {
     };
   }
 
-  static async login(email: string, plainPassword: string): Promise<{
-    user?: User;
-    token?: string;
-    requires2FA?: boolean;
-    mfaToken?: string;
-    email?: string
-  }> {
+  static async login(email: string, plainPassword: string): Promise<{ user?: User; token?: string; requires2FA?: boolean; mfaToken?: string; email?: string }> {
     let user = db.users.get(email);
 
     // If not in local db, attempt to lookup in Supabase
@@ -475,14 +470,14 @@ export class AuthService {
     } catch (e) {
       // Continue
     }
-    
+
     return { user: userObj };
   }
 
   // 5. Active Sessions Management
   static getActiveSessions(userId: string, currentToken?: string): UserSession[] {
     const sessions = db.userSessions.filter(s => s.userId === userId && s.isActive);
-
+    
     // Fallback if empty: create default active current session
     if (sessions.length === 0) {
       const defaultSession: UserSession = {
@@ -510,3 +505,4 @@ export class AuthService {
     }
   }
 }
+

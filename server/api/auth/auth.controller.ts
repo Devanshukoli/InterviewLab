@@ -37,7 +37,7 @@ export class AuthController {
 
     const host = req.get('host') || 'localhost:3000';
     const protocol = req.protocol || 'http';
-    const redirectUri = process.env.APP_URL
+    const redirectUri = process.env.APP_URL 
       ? `${process.env.APP_URL.replace(/\/$/, '')}/auth/callback`
       : `${protocol}://${host}/auth/callback`;
 
@@ -70,7 +70,7 @@ export class AuthController {
 
     const host = req.get('host') || 'localhost:3000';
     const protocol = req.protocol || 'http';
-    const redirectUri = process.env.APP_URL
+    const redirectUri = process.env.APP_URL 
       ? `${process.env.APP_URL.replace(/\/$/, '')}/auth/callback`
       : `${protocol}://${host}/auth/callback`;
 
