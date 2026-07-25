@@ -9,7 +9,7 @@ import {
   generateQuestionsSchema,
   evaluateSchema,
   updateResumeSchema,
-} from './interview.schema';
+} from '../../dtos/interview.dto';
 
 export const interviewRouter = Router();
 

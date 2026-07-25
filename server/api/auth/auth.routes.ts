@@ -12,7 +12,7 @@ import {
   verifyLogin2FASchema,
   verify2FASchema,
   googleAuthSchema,
-} from './auth.schema';
+} from '../../dtos/auth.dto';
 
 export const authRouter = Router();
 

@@ -22,11 +22,14 @@ export const updateProfileSchema = z.object({
     searchHistoryCleared: z.boolean().optional()
   }).optional()
 });
+export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
 
 export const deleteProfileSchema = z.object({
   password: z.string().optional()
 });
+export type DeleteProfileDto = z.infer<typeof deleteProfileSchema>;
 
 export const clearSpecificDataSchema = z.object({
   category: z.string().min(1, 'Category is required')
 });
+export type ClearSpecificDataDto = z.infer<typeof clearSpecificDataSchema>;

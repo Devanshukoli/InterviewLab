@@ -18,6 +18,12 @@ export interface UserProfile {
     practiceReminders: boolean;
     productUpdates: boolean;
   };
+  privacy?: {
+    dataRetentionDays: number;
+    anonymousAIUsage: boolean;
+    allowTelemetry: boolean;
+    searchHistoryCleared: boolean;
+  };
 }
 
 export interface SavedResume {

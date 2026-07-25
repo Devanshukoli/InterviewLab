@@ -3,6 +3,13 @@ import { InterviewService } from './interview.service';
 import { BadRequestError, NotFoundError, catchAsync } from '../../middleware/error_handling';
 import path from 'path';
 import { createRequire } from 'module';
+import {
+  UploadResumeDto,
+  UploadJobDescriptionDto,
+  GenerateQuestionsDto,
+  EvaluateDto,
+  UpdateResumeDto,
+} from '../../dtos/interview.dto';
 
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
@@ -38,7 +45,7 @@ async function extractTextFromBuffer(buffer: Buffer, mimetype: string, filename:
 }
 
 export class InterviewController {
-  static uploadResume = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static uploadResume = catchAsync(async (req: Request<any, any, UploadResumeDto>, res: Response): Promise<void> => {
     const { text, title, fileType } = req.body;
     const data = await InterviewService.uploadResume(text, title, fileType, undefined, req.user);
     res.json({ success: true, data });
@@ -71,7 +78,7 @@ export class InterviewController {
     res.json({ success: true, data });
   });
 
-  static updateResume = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static updateResume = catchAsync(async (req: Request<any, any, UpdateResumeDto>, res: Response): Promise<void> => {
     const { id } = req.params;
     if (!id) {
       throw new BadRequestError('Resume ID parameter is required');
@@ -108,19 +115,18 @@ export class InterviewController {
     res.json({ success: true, data });
   });
 
-  static uploadJobDescription = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static uploadJobDescription = catchAsync(async (req: Request<any, any, UploadJobDescriptionDto>, res: Response): Promise<void> => {
     const { text } = req.body;
     const data = await InterviewService.uploadJobDescription(text, req.user);
     res.json({ success: true, data });
   });
 
-  static generateQuestions = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const { resumeId } = req.body;
+  static generateQuestions = catchAsync(async (req: Request<any, any, GenerateQuestionsDto>, res: Response): Promise<void> => {
     const data = await InterviewService.generateQuestions(req.body, req.user);
     res.json({ success: true, data });
   });
 
-  static evaluate = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static evaluate = catchAsync(async (req: Request<any, any, EvaluateDto>, res: Response): Promise<void> => {
     const { sessionId, questionId, answerText } = req.body;
     const data = await InterviewService.evaluate(sessionId, questionId, answerText, req.user);
     res.json({ success: true, data });

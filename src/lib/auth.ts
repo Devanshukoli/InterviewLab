@@ -1,4 +1,5 @@
 // Client Authentication & Token Management Utilities
+import { ApiResponse } from '../shared/types';
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -158,3 +159,38 @@ export async function fetchWithAuth(input: RequestInfo | URL, init: RequestInit 
 
   return response;
 }
+
+/**
+ * Enhanced fetch wrapper that automatically parses and returns a typed ApiResponse<T>.
+ */
+export async function fetchJsonWithAuth<T = any>(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+): Promise<ApiResponse<T>> {
+  try {
+    const response = await fetchWithAuth(input, init);
+    
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `HTTP error ${response.status}: ${response.statusText}`,
+        };
+      }
+      return {
+        success: true,
+      } as ApiResponse<T>;
+    }
+
+    const data = await response.json();
+    return data as ApiResponse<T>;
+  } catch (error) {
+    console.error('🔮 [fetchJsonWithAuth] Fetch failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unexpected error occurred during the request',
+    };
+  }
+}
+

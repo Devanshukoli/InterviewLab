@@ -17,10 +17,14 @@ import {
   QrCode,
   Copy,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Download,
+  Database,
+  FileText
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { applyTheme, getStoredTheme } from '../lib/theme';
+import { logoutUser } from '../lib/auth';
 
 interface SettingsViewProps {
   user: UserProfile | null;
@@ -48,15 +52,6 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
 
   // Appearance
   const [appearance, setAppearance] = useState<'light' | 'dark' | 'system'>(() => user?.appearance || getStoredTheme());
-
-  useEffect(() => {
-    if (user?.appearance) {
-      setAppearance(user.appearance);
-      applyTheme(user.appearance);
-    } else {
-      applyTheme(getStoredTheme());
-    }
-  }, [user?.appearance]);
 
   // Security & 2FA State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -90,8 +85,124 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [practiceReminders, setPracticeReminders] = useState(user?.notifications?.practiceReminders ?? true);
   const [productUpdates, setProductUpdates] = useState(user?.notifications?.productUpdates ?? false);
 
+  // Privacy & Data Control States
+  const [dataRetentionDays, setDataRetentionDays] = useState(user?.privacy?.dataRetentionDays ?? 0);
+  const [anonymousAIUsage, setAnonymousAIUsage] = useState(user?.privacy?.anonymousAIUsage ?? false);
+  const [allowTelemetry, setAllowTelemetry] = useState(user?.privacy?.allowTelemetry ?? true);
+  const [searchHistoryCleared, setSearchHistoryCleared] = useState(user?.privacy?.searchHistoryCleared ?? false);
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const [isClearingData, setIsClearingData] = useState<string | null>(null);
+  const [clearSuccess, setClearSuccess] = useState<string | null>(null);
+  const [clearError, setClearError] = useState<string | null>(null);
+
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Delete Account States
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '');
+      setEmail(user.email || '');
+      setAppearance(user.appearance || 'system');
+      applyTheme(user.appearance || 'system');
+      setTwoFactorEnabled(user.twoFactorEnabled || false);
+      setGeminiKey(user.apiKeys?.gemini || '');
+      setOpenaiKey(user.apiKeys?.openai || '');
+      setAnthropicKey(user.apiKeys?.anthropic || '');
+      setEmailSummaries(user.notifications?.emailSummaries ?? true);
+      setPracticeReminders(user.notifications?.practiceReminders ?? true);
+      setProductUpdates(user.notifications?.productUpdates ?? false);
+      setDataRetentionDays(user.privacy?.dataRetentionDays ?? 0);
+      setAnonymousAIUsage(user.privacy?.anonymousAIUsage ?? false);
+      setAllowTelemetry(user.privacy?.allowTelemetry ?? true);
+      setSearchHistoryCleared(user.privacy?.searchHistoryCleared ?? false);
+    } else {
+      applyTheme(getStoredTheme());
+    }
+  }, [user]);
+
+  const handleExportData = async () => {
+    setIsExporting(true);
+    setExportSuccess(null);
+    setExportError(null);
+    try {
+      const res = await fetch('/api/profile/export', {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) {
+        throw new Error('Failed to fetch data export');
+      }
+      const json = await res.json();
+      const blob = new Blob([JSON.stringify(json.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `interviewops_data_export_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setExportSuccess('Your personal data has been exported successfully!');
+      setTimeout(() => setExportSuccess(null), 5000);
+    } catch (err: any) {
+      setExportError(err.message || 'An error occurred during data export.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleClearCategory = async (category: 'resumes' | 'sessions' | 'usages' | 'logins' | 'cache') => {
+    const confirmMessages = {
+      resumes: 'Are you sure you want to permanently delete ALL your uploaded resume files? This cannot be undone.',
+      sessions: 'Are you sure you want to permanently delete ALL your practice/interview evaluation sessions? This cannot be undone.',
+      usages: 'Are you sure you want to permanently anonymize and clear your AI usage history?',
+      logins: 'Are you sure you want to permanently anonymize your login history?',
+      cache: 'Are you sure you want to clear your local practice/search cache?'
+    };
+
+    if (!confirm(confirmMessages[category])) {
+      return;
+    }
+
+    setIsClearingData(category);
+    setClearSuccess(null);
+    setClearError(null);
+
+    try {
+      const res = await fetch('/api/profile/privacy/clear', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ category })
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Data clearance failed.');
+      }
+
+      if (category === 'cache') {
+        setSearchHistoryCleared(true);
+      }
+
+      setClearSuccess(`Successfully cleared/anonymized associated data for category: ${category}.`);
+      setTimeout(() => setClearSuccess(null), 5000);
+    } catch (err: any) {
+      setClearError(err.message || 'An error occurred during data clearance.');
+    } finally {
+      setIsClearingData(null);
+    }
+  };
 
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('auth_token');
@@ -249,9 +360,45 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     }
   };
 
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeleteError(null);
+
+    // Validate confirmation text
+    const cleanConfirmText = deleteConfirmText.trim().toUpperCase();
+    const cleanUserEmail = user?.email?.trim().toUpperCase();
+
+    if (cleanConfirmText !== 'DELETE' && cleanConfirmText !== cleanUserEmail) {
+      setDeleteError(`Please type 'DELETE' or your exact email address (${user?.email}) to confirm.`);
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ password: deletePassword })
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Account deletion failed.');
+      }
+
+      // Successful deletion - log out and redirect
+      await logoutUser();
+    } catch (err: any) {
+      setDeleteError(err.message || 'An error occurred during account deletion.');
+      setIsDeleting(false);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setError(null);
     try {
       await onUpdateUser({
         name,
@@ -267,11 +414,19 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
           emailSummaries,
           practiceReminders,
           productUpdates
+        },
+        privacy: {
+          dataRetentionDays,
+          anonymousAIUsage,
+          allowTelemetry,
+          searchHistoryCleared
         }
       });
 
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save settings');
     } finally {
       setIsSaving(false);
     }
@@ -294,6 +449,13 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
         <div className="p-4 bg-green-50 dark:bg-green-950/80 border border-green-200 dark:border-green-800 rounded-xl text-xs font-mono text-green-800 dark:text-green-300 flex items-center gap-2 animate-fadeIn">
           <Check className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
           <span>Settings saved successfully.</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-800 rounded-xl text-xs font-mono text-red-800 dark:text-red-300 flex items-center gap-2 animate-fadeIn">
+          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -747,18 +909,239 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
 
             {/* 6. PRIVACY */}
             {activeTab === 'privacy' && (
-              <div className="space-y-4">
-                <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider border-b border-zinc-200 dark:border-zinc-800/80 pb-2">Privacy & Data Control</h2>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                  Your uploaded resumes and session evaluations are private to your account space.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => alert('Search and session cache cleared.')}
-                  className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-800 dark:text-zinc-300 px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer"
-                >
-                  Clear Local Practice Cache
-                </button>
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider border-b border-zinc-200 dark:border-zinc-800/80 pb-2">Privacy & Data Control</h2>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2 leading-relaxed">
+                    Configure your data retention preferences, export your personal dataset, or request selective deletion of your stored records.
+                  </p>
+                </div>
+
+                {/* Status Banners */}
+                {exportSuccess && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 text-xs text-emerald-800 dark:text-emerald-400 rounded-lg flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                    <span>{exportSuccess}</span>
+                  </div>
+                )}
+                {exportError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 text-xs text-red-800 dark:text-red-400 rounded-lg flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                    <span>{exportError}</span>
+                  </div>
+                )}
+                {clearSuccess && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 text-xs text-emerald-800 dark:text-emerald-400 rounded-lg flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                    <span>{clearSuccess}</span>
+                  </div>
+                )}
+                {clearError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 text-xs text-red-800 dark:text-red-400 rounded-lg flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                    <span>{clearError}</span>
+                  </div>
+                )}
+
+                {/* Section A: Data Retention Policy */}
+                <div className="space-y-3 pt-2">
+                  <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                    <Database className="w-3.5 h-3.5 text-zinc-500" />
+                    Data Retention Policy
+                  </h3>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Determine how long your parsed resumes and interview feedback records are stored on our servers.
+                    </p>
+                    <select
+                      value={dataRetentionDays}
+                      onChange={(e) => setDataRetentionDays(Number(e.target.value))}
+                      className="mt-1.5 w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg p-2 text-xs text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-zinc-500 font-mono"
+                    >
+                      <option value={0}>Keep Indefinitely (Default)</option>
+                      <option value={30}>Auto-delete older than 30 days</option>
+                      <option value={90}>Auto-delete older than 90 days</option>
+                      <option value={365}>Auto-delete older than 365 days</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Section B: Privacy Preferences */}
+                <div className="space-y-3 pt-2">
+                  <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                    <Lock className="w-3.5 h-3.5 text-zinc-500" />
+                    Privacy Preferences
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs font-medium text-zinc-800 dark:text-zinc-300">Anonymized AI Feedback Analytics</label>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          Allow us to use your anonymized evaluation scores to fine-tune peer-scoring and feedback models.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAnonymousAIUsage(!anonymousAIUsage)}
+                        className={`relative inline-flex h-5 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          anonymousAIUsage ? 'bg-zinc-900 dark:bg-white' : 'bg-zinc-200 dark:bg-zinc-800'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white dark:bg-zinc-900 shadow ring-0 transition duration-200 ease-in-out ${
+                            anonymousAIUsage ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs font-medium text-zinc-800 dark:text-zinc-300">Diagnostic & Activity Telemetry</label>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          Log app crashes, loading speeds, and search query parameters anonymously to help maintain application health.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAllowTelemetry(!allowTelemetry)}
+                        className={`relative inline-flex h-5 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          allowTelemetry ? 'bg-zinc-900 dark:bg-white' : 'bg-zinc-200 dark:bg-zinc-800'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white dark:bg-zinc-900 shadow ring-0 transition duration-200 ease-in-out ${
+                            allowTelemetry ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section C: Data Portability (Export) */}
+                <div className="space-y-3 pt-2 border-t border-zinc-100 dark:border-zinc-800/60">
+                  <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                    <Download className="w-3.5 h-3.5 text-zinc-500" />
+                    Data Portability & Export (GDPR Art. 20)
+                  </h3>
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                      Download a structured machine-readable JSON archive containing your full profile data, subscription levels, uploaded resumes, learning progress, AI usage records, and billing statements.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={isExporting}
+                      onClick={handleExportData}
+                      className="inline-flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-xs font-semibold text-zinc-800 dark:text-zinc-300 px-4 py-2 rounded-lg cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      {isExporting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Generating Archive...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download Personal Data Archive</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Section D: Granular Data Erasure / Right to Erasure (GDPR Art. 17) */}
+                <div className="space-y-4 pt-2 border-t border-zinc-100 dark:border-zinc-800/60">
+                  <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    Right to Erasure & Granular Deletion
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                    Under the GDPR Right to Erasure, you can request the immediate hard deletion or anonymization of specific categories of personal data without having to close your entire account.
+                  </p>
+
+                  <div className="space-y-2 border border-zinc-200/60 dark:border-zinc-800/60 rounded-xl divide-y divide-zinc-100 dark:divide-zinc-800/80 overflow-hidden bg-zinc-50/30 dark:bg-zinc-950/10">
+                    {/* Item 1: Resumes */}
+                    <div className="p-3 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-semibold text-zinc-800 dark:text-zinc-300">Resume Library</p>
+                        <p className="text-[10px] text-zinc-500">All uploaded and parsed resume files and metadata.</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isClearingData !== null}
+                        onClick={() => handleClearCategory('resumes')}
+                        className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-950/40 text-[10px] font-semibold text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+                      >
+                        {isClearingData === 'resumes' ? 'Erase...' : 'Erase Resumes'}
+                      </button>
+                    </div>
+
+                    {/* Item 2: Sessions */}
+                    <div className="p-3 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-semibold text-zinc-800 dark:text-zinc-300">Interview Sessions</p>
+                        <p className="text-[10px] text-zinc-500">Your practice evaluations, transcripts, and coaching metrics.</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isClearingData !== null}
+                        onClick={() => handleClearCategory('sessions')}
+                        className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-950/40 text-[10px] font-semibold text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+                      >
+                        {isClearingData === 'sessions' ? 'Erase...' : 'Erase Sessions'}
+                      </button>
+                    </div>
+
+                    {/* Item 3: AI Analytics */}
+                    <div className="p-3 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-semibold text-zinc-800 dark:text-zinc-300">AI Usage Logs</p>
+                        <p className="text-[10px] text-zinc-500">AI token metrics and fine-tuning history metadata.</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isClearingData !== null}
+                        onClick={() => handleClearCategory('usages')}
+                        className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-950/40 text-[10px] font-semibold text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+                      >
+                        {isClearingData === 'usages' ? 'Anonymize...' : 'Anonymize Logs'}
+                      </button>
+                    </div>
+
+                    {/* Item 4: Login history */}
+                    <div className="p-3 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-semibold text-zinc-800 dark:text-zinc-300">Login & Access Logs</p>
+                        <p className="text-[10px] text-zinc-500">Your device IPs, login statuses, and browser strings.</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isClearingData !== null}
+                        onClick={() => handleClearCategory('logins')}
+                        className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-950/40 text-[10px] font-semibold text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+                      >
+                        {isClearingData === 'logins' ? 'Anonymize...' : 'Anonymize Logins'}
+                      </button>
+                    </div>
+
+                    {/* Item 5: Local Cache */}
+                    <div className="p-3 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-semibold text-zinc-800 dark:text-zinc-300">Local Cache</p>
+                        <p className="text-[10px] text-zinc-500">Clear cached searches, dashboard preferences, and local cookies.</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isClearingData !== null || searchHistoryCleared}
+                        onClick={() => handleClearCategory('cache')}
+                        className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-[10px] font-semibold text-zinc-800 dark:text-zinc-300 px-3 py-1.5 rounded-lg cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        {searchHistoryCleared ? 'Cleared' : isClearingData === 'cache' ? 'Clearing...' : 'Clear Cache'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -766,20 +1149,98 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
             {activeTab === 'danger' && (
               <div className="space-y-4 border border-red-200 dark:border-red-900/60 bg-red-50/50 dark:bg-red-950/10 p-5 rounded-xl">
                 <h2 className="text-sm font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Danger Zone</h2>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                  Permanently delete your InterviewOps account, saved resume library, and interview session history. This action cannot be undone.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm('Are you sure you want to permanently delete your account and all associated data?')) {
-                      alert('Account deletion request queued.');
-                    }
-                  }}
-                  className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors cursor-pointer"
-                >
-                  Delete Account & Data
-                </button>
+                
+                {!showDeleteConfirm ? (
+                  <div className="space-y-4">
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                      Permanently delete your InterviewOps account, saved resume library, and interview session history. This action cannot be undone and will cascade delete all your private resources.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Delete Account & Data
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleDeleteAccount} className="space-y-4">
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed font-semibold text-red-600 dark:text-red-400">
+                      You are about to permanently delete your account. This is irreversible.
+                    </p>
+
+                    {deleteError && (
+                      <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-300 flex items-start gap-2.5">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{deleteError}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                          Confirm Password
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="Your current password"
+                          value={deletePassword}
+                          onChange={(e) => setDeletePassword(e.target.value)}
+                          className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-red-500 font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                          Confirm Action
+                        </label>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">
+                          Please type <span className="font-mono font-bold text-zinc-700 dark:text-zinc-200">DELETE</span> or your email <span className="font-mono font-bold text-zinc-700 dark:text-zinc-200">{user?.email}</span> to confirm.
+                        </p>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Type DELETE or your email"
+                          value={deleteConfirmText}
+                          onChange={(e) => setDeleteConfirmText(e.target.value)}
+                          className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-red-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <button
+                        type="submit"
+                        disabled={isDeleting}
+                        className="bg-red-600 hover:bg-red-700 disabled:opacity-55 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-colors cursor-pointer flex items-center gap-2"
+                      >
+                        {isDeleting ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Deleting Account...</span>
+                          </>
+                        ) : (
+                          <span>Permanently Delete Account</span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isDeleting}
+                        onClick={() => {
+                          setShowDeleteConfirm(false);
+                          setDeletePassword('');
+                          setDeleteConfirmText('');
+                          setDeleteError(null);
+                        }}
+                        className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-semibold px-4 py-2.5 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             )}
 

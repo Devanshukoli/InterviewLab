@@ -14,9 +14,9 @@ export interface UpdateProfileDTO {
     anthropic?: string;
   };
   notifications?: {
-    emailSummaries: boolean;
-    practiceReminders: boolean;
-    productUpdates: boolean;
+    emailSummaries?: boolean;
+    practiceReminders?: boolean;
+    productUpdates?: boolean;
   };
   privacy?: {
     dataRetentionDays?: number;

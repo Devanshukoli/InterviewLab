@@ -3,9 +3,20 @@ import { AuthService } from './auth.service';
 import { ProfileService } from '../profile/profile.service';
 import { BadRequestError, UnauthorizedError, catchAsync } from '../../middleware/error_handling';
 import { config } from '../../config';
+import {
+  RegisterDto,
+  LoginDto,
+  RefreshDto,
+  RequestResetDto,
+  ResetPasswordDto,
+  ChangePasswordDto,
+  VerifyLogin2FADto,
+  Verify2FADto,
+  GoogleAuthDto,
+} from '../../dtos/auth.dto';
 
 export class AuthController {
-  static register = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static register = catchAsync(async (req: Request<any, any, RegisterDto>, res: Response): Promise<void> => {
     const { email, name, password } = req.body;
     const data = await AuthService.register(email, name, password);
     if (data.refreshToken) {
@@ -20,7 +31,7 @@ export class AuthController {
     res.json({ success: true, data });
   });
 
-  static login = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static login = catchAsync(async (req: Request<any, any, LoginDto>, res: Response): Promise<void> => {
     const { email, password } = req.body;
     const data = await AuthService.login(email, password);
     if (data.refreshToken) {
@@ -35,7 +46,7 @@ export class AuthController {
     res.json({ success: true, data });
   });
 
-  static refresh = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static refresh = catchAsync(async (req: Request<any, any, RefreshDto>, res: Response): Promise<void> => {
     const refreshToken = req.body?.refreshToken || (req.headers['x-refresh-token'] as string) || req.cookies?.refresh_token;
     if (!refreshToken) {
       throw new BadRequestError('Refresh token required');
@@ -66,13 +77,13 @@ export class AuthController {
     res.json({ success: true, message: 'Logged out successfully' });
   });
 
-  static requestPasswordReset = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static requestPasswordReset = catchAsync(async (req: Request<any, any, RequestResetDto>, res: Response): Promise<void> => {
     const { email } = req.body;
     const data = await AuthService.requestPasswordReset(email);
     res.json({ success: true, data });
   });
 
-  static resetPassword = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static resetPassword = catchAsync(async (req: Request<any, any, ResetPasswordDto>, res: Response): Promise<void> => {
     const { token, newPassword } = req.body;
     const data = await AuthService.resetPassword(token, newPassword);
     res.json({ success: true, data });
@@ -425,7 +436,7 @@ export class AuthController {
     }
   });
 
-  static google = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static google = catchAsync(async (req: Request<any, any, GoogleAuthDto>, res: Response): Promise<void> => {
     const { email, name, credential, code, redirect_uri } = req.body;
 
     // 1. Verify Google One Tap / ID Token
@@ -498,7 +509,7 @@ export class AuthController {
     res.json({ success: true, data });
   });
 
-  static changePassword = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static changePassword = catchAsync(async (req: Request<any, any, ChangePasswordDto>, res: Response): Promise<void> => {
     const user = req.user!;
     const { currentPassword, newPassword } = req.body;
     await AuthService.changePassword(user.id, currentPassword, newPassword);
@@ -511,14 +522,14 @@ export class AuthController {
     res.json({ success: true, data });
   });
 
-  static verify2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static verify2FA = catchAsync(async (req: Request<any, any, Verify2FADto>, res: Response): Promise<void> => {
     const user = req.user!;
     const { code } = req.body;
     const { user: updatedUser, backupCodes } = await AuthService.verifyAndEnable2FA(user.id, code);
     res.json({ success: true, data: { user: updatedUser, backupCodes }, message: '2FA enabled successfully' });
   });
 
-  static verifyLogin2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  static verifyLogin2FA = catchAsync(async (req: Request<any, any, VerifyLogin2FADto>, res: Response): Promise<void> => {
     const { mfaToken, code } = req.body;
     const data = await AuthService.verifyMfaLogin(mfaToken, code);
 

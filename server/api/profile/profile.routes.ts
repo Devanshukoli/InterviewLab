@@ -6,7 +6,7 @@ import {
   updateProfileSchema,
   deleteProfileSchema,
   clearSpecificDataSchema,
-} from './profile.schema';
+} from '../../dtos/profile.dto';
 
 export const profileRouter = Router();
 
