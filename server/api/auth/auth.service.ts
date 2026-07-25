@@ -1,12 +1,10 @@
-import { db, User, UserLogin, UserSession, stringToUUID } from '../../db';
+import { db, User, UserLogin, UserSession, PasswordResetToken, stringToUUID } from '../../db';
 import { hashPassword, verifyPassword } from './utils/crypto';
-import { generateJwtToken } from '../../middleware/jwt.middleware';
+import { generateJwtToken, generateTokens, verifyRefreshToken, revokeAccessToken, RefreshJwtPayload } from '../../middleware/jwt.middleware';
 import { getSupabaseClient } from '../../services/supabase';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../middleware/error_handling';
 import { TotpService } from '../../services/totp';
 import crypto from 'crypto';
-
-let currentUserSession: User | null = null;
 
 interface MfaSession {
   mfaToken: string;
@@ -18,16 +16,6 @@ interface MfaSession {
 const pendingMfaSessions = new Map<string, MfaSession>();
 
 export class AuthService {
-  static getCurrentUser(): User | null {
-    return currentUserSession;
-  }
-
-  static setCurrentUser(user: User | null): void {
-    currentUserSession = user;
-    if (user) {
-      db.users.set(user.email, user);
-    }
-  }
 
   static createMfaSession(user: User): { requires2FA: true; mfaToken: string; email: string } {
     const mfaToken = 'mfa-' + crypto.randomBytes(16).toString('hex');
@@ -45,7 +33,7 @@ export class AuthService {
     };
   }
 
-  static async verifyMfaLogin(mfaToken: string, code: string): Promise<{ user: User; token: string }> {
+  static async verifyMfaLogin(mfaToken: string, code: string): Promise<{ user: User; token: string; refreshToken: string }> {
     const mfaSession = pendingMfaSessions.get(mfaToken);
     if (!mfaSession || Date.now() > mfaSession.expiresAt) {
       if (mfaSession) pendingMfaSessions.delete(mfaToken);
@@ -113,7 +101,6 @@ export class AuthService {
     }
 
     pendingMfaSessions.delete(mfaToken);
-    currentUserSession = user;
 
     // Log in Supabase
     if (supabase) {
@@ -130,11 +117,11 @@ export class AuthService {
       }
     }
 
-    const token = generateJwtToken(user);
-    return { user, token };
+    const { token, refreshToken } = generateTokens(user);
+    return { user, token, refreshToken };
   }
 
-  static async register(email: string, name: string, plainPassword: string): Promise<{ user: User; token: string }> {
+  static async register(email: string, name: string, plainPassword: string): Promise<{ user: User; token: string; refreshToken: string }> {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
@@ -161,7 +148,6 @@ export class AuthService {
     };
 
     db.users.set(email, newUser);
-    currentUserSession = newUser;
 
     if (supabase) {
       try {
@@ -183,11 +169,11 @@ export class AuthService {
       }
     }
 
-    const token = generateJwtToken(newUser);
-    return { user: newUser, token };
+    const { token, refreshToken } = generateTokens(newUser);
+    return { user: newUser, token, refreshToken };
   }
 
-  static async login(email: string, plainPassword: string): Promise<{ user?: User; token?: string; requires2FA?: boolean; mfaToken?: string; email?: string }> {
+  static async login(email: string, plainPassword: string): Promise<{ user?: User; token?: string; refreshToken?: string; requires2FA?: boolean; mfaToken?: string; email?: string }> {
     let user: User | undefined;
     const supabase = getSupabaseClient();
 
@@ -257,8 +243,6 @@ export class AuthService {
       return AuthService.createMfaSession(user);
     }
 
-    currentUserSession = user;
-
     if (supabase) {
       try {
         await supabase.from('user_logins').insert([{
@@ -272,11 +256,11 @@ export class AuthService {
       }
     }
 
-    const token = generateJwtToken(user);
-    return { user, token };
+    const { token, refreshToken } = generateTokens(user);
+    return { user, token, refreshToken };
   }
 
-  static async googleLogin(email: string, name: string): Promise<{ user?: User; token?: string; requires2FA?: boolean; mfaToken?: string; email?: string }> {
+  static async googleLogin(email: string, name: string): Promise<{ user?: User; token?: string; refreshToken?: string; requires2FA?: boolean; mfaToken?: string; email?: string }> {
     let user: User | undefined;
     const supabase = getSupabaseClient();
 
@@ -335,8 +319,6 @@ export class AuthService {
       return AuthService.createMfaSession(user);
     }
 
-    currentUserSession = user;
-
     if (supabase) {
       try {
         await supabase.from('user_logins').insert([{
@@ -350,8 +332,8 @@ export class AuthService {
       }
     }
 
-    const token = generateJwtToken(user);
-    return { user, token };
+    const { token, refreshToken } = generateTokens(user);
+    return { user, token, refreshToken };
   }
 
   static async getLogins(userId: string): Promise<UserLogin[]> {
@@ -449,59 +431,11 @@ export class AuthService {
     }
   }
 
-  static async resetPassword(email: string, newPass: string): Promise<void> {
-    if (!newPass || newPass.length < 8) {
-      throw new BadRequestError('New password must be at least 8 characters long');
-    }
-
-    const supabase = getSupabaseClient();
-    let user = db.users.get(email);
-
-    if (supabase) {
-      try {
-        const { data } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
-        if (data) {
-          user = {
-            id: data.id,
-            email: data.email,
-            passwordHash: data.password_hash || '',
-            name: data.name,
-            role: data.role || 'user'
-          };
-        }
-      } catch (e) {
-        console.warn('🔮 [AuthService] Error checking profile for reset password:', e);
-      }
-    }
-
-    if (!user) {
-      throw new BadRequestError('Account not found with provided email address');
-    }
-
-    const newHash = hashPassword(newPass);
-    user.passwordHash = newHash;
-    db.users.set(email, user);
-
-    if (supabase) {
-      try {
-        await supabase
-          .from('profiles')
-          .update({
-            password_hash: newHash,
-            last_password_change: new Date().toISOString()
-          })
-          .eq('email', email);
-      } catch (e) {
-        console.warn('🔮 [AuthService] Failed to reset password in Supabase:', e);
-      }
-    }
-  }
-
   static async setup2FA(userId: string): Promise<{ secret: string; uri: string }> {
-    let userObj: User | undefined = currentUserSession?.id === userId ? currentUserSession : undefined;
+    let userObj: User | undefined;
     const supabase = getSupabaseClient();
 
-    if (!userObj && supabase) {
+    if (supabase) {
       try {
         const { data } = await supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle();
         if (data) {
@@ -540,13 +474,11 @@ export class AuthService {
   }
 
   static async verifyAndEnable2FA(userId: string, code: string): Promise<{ user: User; backupCodes: string[] }> {
-    let userObj: User | undefined = currentUserSession?.id === userId ? currentUserSession : undefined;
-    if (!userObj) {
-      for (const u of db.users.values()) {
-        if (u.id === userId) {
-          userObj = u;
-          break;
-        }
+    let userObj: User | undefined;
+    for (const u of db.users.values()) {
+      if (u.id === userId) {
+        userObj = u;
+        break;
       }
     }
 
@@ -587,13 +519,11 @@ export class AuthService {
   }
 
   static async disable2FA(userId: string): Promise<{ user: User }> {
-    let userObj: User | undefined = currentUserSession?.id === userId ? currentUserSession : undefined;
-    if (!userObj) {
-      for (const u of db.users.values()) {
-        if (u.id === userId) {
-          userObj = u;
-          break;
-        }
+    let userObj: User | undefined;
+    for (const u of db.users.values()) {
+      if (u.id === userId) {
+        userObj = u;
+        break;
       }
     }
 
@@ -720,6 +650,322 @@ export class AuthService {
     if (session) {
       session.isActive = false;
     }
+  }
+
+  static async refreshToken(oldRefreshToken: string): Promise<{ user: User; token: string; refreshToken: string }> {
+    let decoded: RefreshJwtPayload;
+    try {
+      decoded = verifyRefreshToken(oldRefreshToken);
+    } catch (err) {
+      throw new UnauthorizedError('Invalid or expired refresh token. Please sign in again.');
+    }
+
+    const { id: userId, email, tokenId } = decoded;
+
+    const tokenRecord = db.refreshTokens.get(tokenId);
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data } = await supabase.from('refresh_tokens').select('*').eq('id', tokenId).maybeSingle();
+        if (data && data.revoked) {
+          throw new UnauthorizedError('Refresh token has been revoked. Please sign in again.');
+        }
+      } catch (e) {
+        if (e instanceof UnauthorizedError) throw e;
+      }
+    }
+
+    if (!tokenRecord) {
+      throw new UnauthorizedError('Refresh token record not found or revoked. Please sign in again.');
+    }
+
+    if (tokenRecord.revoked) {
+      for (const [rtId, rt] of db.refreshTokens.entries()) {
+        if (rt.userId === userId) {
+          rt.revoked = true;
+        }
+      }
+      throw new UnauthorizedError('Security notice: Revoked refresh token reused. Session invalidated.');
+    }
+
+    if (Date.now() > tokenRecord.expiresAt) {
+      tokenRecord.revoked = true;
+      throw new UnauthorizedError('Refresh token has expired. Please sign in again.');
+    }
+
+    tokenRecord.revoked = true;
+
+    let user: User | undefined;
+    if (supabase) {
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        if (data) {
+          user = {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || '',
+            name: data.name || email.split('@')[0],
+            role: data.role || 'user',
+            twoFactorEnabled: data.two_factor_enabled || false,
+            twoFactorSecret: data.two_factor_secret || undefined,
+            backupCodes: data.backup_codes || []
+          };
+          db.users.set(email, user);
+        }
+      } catch (e) {}
+    }
+
+    if (!user) {
+      user = db.users.get(email);
+    }
+
+    if (!user) {
+      user = {
+        id: userId,
+        email,
+        passwordHash: '',
+        name: email.split('@')[0],
+        role: 'user'
+      };
+      db.users.set(email, user);
+    }
+
+    const { token: newAccessToken, refreshToken: newRefreshToken } = generateTokens(user);
+
+    const newDecoded = verifyRefreshToken(newRefreshToken);
+    tokenRecord.replacedByToken = newDecoded.tokenId;
+
+    if (supabase) {
+      try {
+        await supabase.from('refresh_tokens').update({ revoked: true, replaced_by: newDecoded.tokenId }).eq('id', tokenId);
+        await supabase.from('refresh_tokens').insert({
+          id: newDecoded.tokenId,
+          user_id: stringToUUID(user.id),
+          token: newRefreshToken,
+          expires_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+          revoked: false
+        });
+      } catch (e) {}
+    }
+
+    return {
+      user,
+      token: newAccessToken,
+      refreshToken: newRefreshToken
+    };
+  }
+
+  static async logout(accessToken?: string, refreshToken?: string, userId?: string): Promise<void> {
+    // 1. Revoke access token if provided
+    if (accessToken) {
+      revokeAccessToken(accessToken);
+    }
+
+    // 2. Revoke refresh token if provided
+    if (refreshToken) {
+      try {
+        const decoded = verifyRefreshToken(refreshToken);
+        const tokenRecord = db.refreshTokens.get(decoded.tokenId);
+        if (tokenRecord) {
+          tokenRecord.revoked = true;
+        }
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          await supabase.from('refresh_tokens').update({ revoked: true }).eq('id', decoded.tokenId);
+        }
+      } catch (err) {
+        for (const [rtId, rt] of db.refreshTokens.entries()) {
+          if (rt.token === refreshToken) {
+            rt.revoked = true;
+          }
+        }
+      }
+    }
+
+    // 3. Revoke active refresh tokens and user sessions if userId is present
+    if (userId) {
+      for (const [rtId, rt] of db.refreshTokens.entries()) {
+        if (rt.userId === userId) {
+          rt.revoked = true;
+        }
+      }
+      for (const session of db.userSessions) {
+        if (session.userId === userId) {
+          session.isActive = false;
+        }
+      }
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase.from('refresh_tokens').update({ revoked: true }).eq('user_id', stringToUUID(userId));
+          await supabase.from('user_sessions').update({ is_active: false }).eq('user_id', stringToUUID(userId));
+        } catch (e) {}
+      }
+    }
+  }
+
+  static async requestPasswordReset(email: string): Promise<{ message: string; resetToken?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    let user: User | undefined;
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('email', cleanEmail).maybeSingle();
+        if (data) {
+          user = {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || '',
+            name: data.name || cleanEmail.split('@')[0],
+            role: data.role || 'user'
+          };
+          db.users.set(cleanEmail, user);
+        }
+      } catch (e) {}
+    }
+
+    if (!user) {
+      user = db.users.get(cleanEmail);
+    }
+
+    if (!user) {
+      throw new BadRequestError('No account found with this email address.');
+    }
+
+    // Generate 6-digit verification code/token
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 mins
+
+    const resetRecord: PasswordResetToken = {
+      id: 'prt-' + crypto.randomBytes(12).toString('hex'),
+      userId: user.id,
+      email: cleanEmail,
+      token,
+      expiresAt,
+      used: false,
+      createdAt: new Date().toISOString()
+    };
+
+    db.passwordResetTokens.set(token, resetRecord);
+
+    if (supabase) {
+      try {
+        await supabase.from('password_resets').insert({
+          id: resetRecord.id,
+          user_id: stringToUUID(user.id),
+          email: cleanEmail,
+          token,
+          expires_at: new Date(expiresAt).toISOString(),
+          used: false
+        });
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to record password reset in Supabase:', e);
+      }
+    }
+
+    console.log(`📧 [PasswordReset] Password reset requested for ${cleanEmail}. Reset Code: ${token}`);
+
+    return {
+      message: `Password reset instructions sent to ${cleanEmail}. Enter your 6-digit code to set a new password.`,
+      resetToken: token
+    };
+  }
+
+  static async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    if (!token || !token.trim()) {
+      throw new BadRequestError('Reset token required');
+    }
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestError('New password must be at least 6 characters long');
+    }
+
+    const cleanToken = token.trim();
+    let resetRecord = db.passwordResetTokens.get(cleanToken);
+
+    const supabase = getSupabaseClient();
+    if (!resetRecord && supabase) {
+      try {
+        const { data } = await supabase
+          .from('password_resets')
+          .select('*')
+          .eq('token', cleanToken)
+          .eq('used', false)
+          .maybeSingle();
+
+        if (data) {
+          resetRecord = {
+            id: data.id,
+            userId: data.user_id,
+            email: data.email,
+            token: data.token,
+            expiresAt: new Date(data.expires_at).getTime(),
+            used: data.used,
+            createdAt: data.created_at || new Date().toISOString()
+          };
+        }
+      } catch (e) {}
+    }
+
+    if (!resetRecord) {
+      throw new BadRequestError('Invalid or expired password reset token');
+    }
+
+    if (resetRecord.used) {
+      throw new BadRequestError('Password reset token has already been used');
+    }
+
+    if (Date.now() > resetRecord.expiresAt) {
+      resetRecord.used = true;
+      throw new BadRequestError('Password reset token has expired. Please request a new code.');
+    }
+
+    // Mark used
+    resetRecord.used = true;
+
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update user in memory
+    let user = db.users.get(resetRecord.email);
+    if (user) {
+      user.passwordHash = hashedPassword;
+      db.users.set(user.email, user);
+    } else {
+      for (const u of db.users.values()) {
+        if (u.id === resetRecord.userId) {
+          u.passwordHash = hashedPassword;
+          db.users.set(u.email, u);
+          break;
+        }
+      }
+    }
+
+    if (supabase) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ password_hash: hashedPassword })
+          .eq('email', resetRecord.email);
+
+        await supabase
+          .from('password_resets')
+          .update({ used: true })
+          .eq('token', cleanToken);
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to update password in Supabase:', e);
+      }
+    }
+
+    // Invalidate refresh tokens for security
+    for (const [rtId, rt] of db.refreshTokens.entries()) {
+      if (rt.userId === resetRecord.userId) {
+        rt.revoked = true;
+      }
+    }
+
+    return { message: 'Password reset successfully. Please log in with your new password.' };
   }
 }
 

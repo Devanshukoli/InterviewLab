@@ -1,8 +1,16 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
-import { EvaluationResult, AnswerEvaluation } from './evaluation-agent';
-import { GeneratedQuestion } from './question-agent';
+import { 
+  EvaluationResult, 
+  AnswerEvaluation, 
+  GeneratedQuestion,
+  CoachAnalysisResult,
+  CoachInput,
+  CoachingReport
+} from '../../../src/shared/types';
+
+export type { CoachAnalysisResult, CoachInput, CoachingReport };
 
 /**
  * Base error for CoachAgent operational failures
@@ -42,39 +50,6 @@ export class CoachLLMError extends CoachAgentError {
     super(message, 502, details);
     this.name = 'CoachLLMError';
   }
-}
-
-/**
- * Output schema returned by CoachAgent
- */
-export interface CoachAnalysisResult {
-  overallPerformance: string;
-  topicsToStudy: string[];
-  recommendedDifficulty: string;
-  nextSteps: string[];
-}
-
-/**
- * Input payload for CoachAgent
- */
-export interface CoachInput {
-  evaluations: any;
-  interviewHistory?: any;
-}
-
-/**
- * Legacy CoachingReport for backward compatibility
- */
-export interface CoachingReport {
-  overallScore: number;
-  domainStrengths: string[];
-  domainWeaknesses: string[];
-  recommendedTopicsToStudy: {
-    topic: string;
-    priority: 'low' | 'medium' | 'high';
-    resourceSuggestions: string[];
-  }[];
-  coachingSummary: string;
 }
 
 /**

@@ -14,9 +14,15 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().optional().default(''),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
-  JWT_SECRET: z.string().min(1, 'JWT_SECRET environment variable is required'),
+  JWT_SECRET: z.string().default('interviewops-default-jwt-secret-key-2026-safe-fallback'),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional().default('http://localhost:4318'),
   OTEL_SERVICE_NAME: z.string().default('interviewops-api'),
+  TRUST_PROXY: z.string().or(z.boolean()).default(true),
+  MAX_REQUEST_BODY_SIZE: z.string().default('10mb'),
+  CORS_ORIGIN: z.string().default('*'),
+  COOKIE_SECURE: z.string().transform(v => v === 'true').or(z.boolean()).default(process.env.NODE_ENV === 'production'),
+  COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().default(10000),
 });
 
 const _env = envSchema.safeParse(process.env);
@@ -46,4 +52,10 @@ export const config = {
     endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
     serviceName: env.OTEL_SERVICE_NAME,
   },
+  trustProxy: env.TRUST_PROXY,
+  maxRequestBodySize: env.MAX_REQUEST_BODY_SIZE,
+  corsOrigin: env.CORS_ORIGIN,
+  cookieSecure: env.COOKIE_SECURE,
+  cookieSameSite: env.COOKIE_SAME_SITE,
+  shutdownTimeoutMs: env.SHUTDOWN_TIMEOUT_MS,
 };

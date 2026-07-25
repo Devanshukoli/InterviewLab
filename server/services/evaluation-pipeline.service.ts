@@ -1,9 +1,17 @@
-import { EvaluationAgent, defaultEvaluationAgent, EvaluationResult } from '../modules/agents/evaluation-agent';
-import { CoachAgent, defaultCoachAgent, CoachAnalysisResult } from '../modules/agents/coach-agent';
+import { EvaluationAgent, defaultEvaluationAgent } from '../modules/agents/evaluation-agent';
+import { CoachAgent, defaultCoachAgent } from '../modules/agents/coach-agent';
+import { 
+  EvaluationResult, 
+  CoachAnalysisResult,
+  EvaluationPipelineInput,
+  EvaluationPipelineResult
+} from '../../src/shared/types';
 import { db } from '../db';
 import { getSupabaseClient } from './supabase';
 import { tracer, getAITelemetryAttributes } from '../observability';
 import { AppError } from '../middleware/error_handling';
+
+export type { EvaluationPipelineInput, EvaluationPipelineResult };
 
 /**
  * Custom error thrown when the Evaluation Pipeline fails
@@ -13,34 +21,6 @@ export class EvaluationPipelineError extends AppError {
     super(message, statusCode, details);
     this.name = 'EvaluationPipelineError';
   }
-}
-
-/**
- * Input payload for EvaluationPipelineService
- */
-export interface EvaluationPipelineInput {
-  question: string | { question?: string; questionText?: string; expectedTopics?: string[]; expectedConcepts?: string[]; topic?: string; [key: string]: any };
-  candidateAnswer: string;
-  expectedTopics?: string[];
-  userId?: string;
-  interviewId?: string;
-  sessionId?: string;
-  questionId?: string;
-  previousHistory?: any;
-  interviewType?: string;
-  difficulty?: string;
-  experienceLevel?: string;
-}
-
-/**
- * Result returned by EvaluationPipelineService containing evaluation summary & coaching recommendations
- */
-export interface EvaluationPipelineResult {
-  evaluation: EvaluationResult;
-  coaching: CoachAnalysisResult;
-  sessionId?: string;
-  questionId?: string;
-  persistedAt: string;
 }
 
 /**

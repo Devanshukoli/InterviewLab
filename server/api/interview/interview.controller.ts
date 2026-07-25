@@ -28,7 +28,7 @@ export class InterviewController {
     if (!text || typeof text !== 'string' || !text.trim()) {
       throw new BadRequestError('Resume text content is required');
     }
-    const data = await InterviewService.uploadResume(text, title, fileType);
+    const data = await InterviewService.uploadResume(text, title, fileType, undefined, req.user);
     res.json({ success: true, data });
   });
 
@@ -52,7 +52,8 @@ export class InterviewController {
         fileName: file.originalname,
         fileSize: file.size,
         fileUrl: undefined // Can be used if Supabase Storage is configured
-      }
+      },
+      req.user
     );
 
     res.json({ success: true, data });
@@ -91,7 +92,7 @@ export class InterviewController {
       payload = { title, text, fileType };
     }
 
-    const data = await InterviewService.updateResume(id, payload);
+    const data = await InterviewService.updateResume(id, payload, req.user);
     res.json({ success: true, data });
   });
 
@@ -100,7 +101,7 @@ export class InterviewController {
     if (!text || typeof text !== 'string' || !text.trim()) {
       throw new BadRequestError('Job description text content is required');
     }
-    const data = await InterviewService.uploadJobDescription(text);
+    const data = await InterviewService.uploadJobDescription(text, req.user);
     res.json({ success: true, data });
   });
 
@@ -109,7 +110,7 @@ export class InterviewController {
     if (!resumeId) {
       throw new BadRequestError('resumeId parameter is required');
     }
-    const data = await InterviewService.generateQuestions(req.body);
+    const data = await InterviewService.generateQuestions(req.body, req.user);
     res.json({ success: true, data });
   });
 
@@ -118,12 +119,12 @@ export class InterviewController {
     if (!sessionId || !questionId || !answerText) {
       throw new BadRequestError('sessionId, questionId, and answerText are required');
     }
-    const data = await InterviewService.evaluate(sessionId, questionId, answerText);
+    const data = await InterviewService.evaluate(sessionId, questionId, answerText, req.user);
     res.json({ success: true, data });
   });
 
   static getHistory = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const data = await InterviewService.getHistory();
+    const data = await InterviewService.getHistory(req.user);
     res.json({ success: true, data });
   });
 

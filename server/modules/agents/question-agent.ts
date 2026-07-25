@@ -1,8 +1,18 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
-import { ResumeAnalysisResult, ResumeProfile } from './resume-agent';
-import { GapAnalysisResult, GapAnalysis } from './gap-agent';
+import { 
+  ResumeAnalysisResult, 
+  ResumeProfile, 
+  GapAnalysisResult, 
+  GapAnalysis,
+  QuestionItem,
+  QuestionGenerationResult,
+  QuestionGenerationInput,
+  GeneratedQuestion
+} from '../../../src/shared/types';
+
+export type { QuestionItem, QuestionGenerationResult, QuestionGenerationInput, GeneratedQuestion };
 
 /**
  * Base error for QuestionAgent operational failures
@@ -52,48 +62,6 @@ export class QuestionLLMError extends QuestionAgentError {
     super(message, 502, details);
     this.name = 'QuestionLLMError';
   }
-}
-
-/**
- * Single Question object schema
- */
-export interface QuestionItem {
-  id: string;
-  question: string;
-  category: string;
-  difficulty: string;
-  expectedTopics: string[];
-}
-
-/**
- * Structured Output Schema returned by QuestionAgent
- */
-export interface QuestionGenerationResult {
-  questions: QuestionItem[];
-}
-
-/**
- * Input options payload for QuestionAgent
- */
-export interface QuestionGenerationInput {
-  resume: ResumeAnalysisResult | ResumeProfile | any;
-  gap?: GapAnalysisResult | GapAnalysis | any | null;
-  interviewType?: string;
-  difficulty?: string;
-  experienceLevel?: string;
-  numberOfQuestions?: number;
-}
-
-/**
- * Legacy GeneratedQuestion for cross-module compatibility
- */
-export interface GeneratedQuestion {
-  id: string;
-  questionText: string;
-  type: string;
-  topic: string;
-  difficulty: string;
-  expectedConcepts: string[];
 }
 
 /**

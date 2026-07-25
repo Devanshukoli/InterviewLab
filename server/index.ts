@@ -44,6 +44,26 @@ async function startServer() {
     console.log(`🔬 [Observability] Endpoint http://0.0.0.0:${config.port}/api/telemetry is live.`);
   });
 
+  const gracefulShutdown = (signal: string) => {
+    console.log(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
+    server.close((err) => {
+      if (err) {
+        console.error('❌ Error during HTTP server close:', err);
+        process.exit(1);
+      }
+      console.log('✅ HTTP server closed cleanly.');
+      process.exit(0);
+    });
+
+    setTimeout(() => {
+      console.warn('⚠️ Graceful shutdown timed out, force exiting...');
+      process.exit(1);
+    }, config.shutdownTimeoutMs).unref();
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
   return server;
 }
 

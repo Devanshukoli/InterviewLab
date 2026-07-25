@@ -1,11 +1,8 @@
 import { db, LearningProgress, stringToUUID } from '../../db';
-import { AuthService } from '../auth/auth.service';
 import { getSupabaseClient } from '../../services/supabase';
 
 export class ProgressService {
-  static async getProgress(): Promise<LearningProgress[]> {
-    const user = AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-anonymous';
+  static async getProgress(userId: string = 'usr-anonymous'): Promise<LearningProgress[]> {
     const supabase = getSupabaseClient();
 
     if (supabase) {

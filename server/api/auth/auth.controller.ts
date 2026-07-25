@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
+import { ProfileService } from '../profile/profile.service';
 import { BadRequestError, UnauthorizedError, catchAsync } from '../../middleware/error_handling';
+import { config } from '../../config';
 
 export class AuthController {
   static register = catchAsync(async (req: Request, res: Response): Promise<void> => {
@@ -9,6 +11,15 @@ export class AuthController {
       throw new BadRequestError('Missing registration details (email, name, and password required)');
     }
     const data = await AuthService.register(email, name, password);
+    if (data.refreshToken) {
+      res.cookie('refresh_token', data.refreshToken, {
+        httpOnly: true,
+        path: '/api/auth',
+        maxAge: 7 * 24 * 3600 * 1000,
+        sameSite: config.cookieSameSite,
+        secure: config.cookieSecure,
+      });
+    }
     res.json({ success: true, data });
   });
 
@@ -18,10 +29,66 @@ export class AuthController {
       throw new BadRequestError('Email and password required');
     }
     const data = await AuthService.login(email, password);
+    if (data.refreshToken) {
+      res.cookie('refresh_token', data.refreshToken, {
+        httpOnly: true,
+        path: '/api/auth',
+        maxAge: 7 * 24 * 3600 * 1000,
+        sameSite: config.cookieSameSite,
+        secure: config.cookieSecure,
+      });
+    }
     res.json({ success: true, data });
   });
 
-  // Get Google OAuth Authorization URL
+  static refresh = catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const refreshToken = req.body?.refreshToken || (req.headers['x-refresh-token'] as string) || req.cookies?.refresh_token;
+    if (!refreshToken) {
+      throw new BadRequestError('Refresh token required');
+    }
+    const data = await AuthService.refreshToken(refreshToken);
+    if (data.refreshToken) {
+      res.cookie('refresh_token', data.refreshToken, {
+        httpOnly: true,
+        path: '/api/auth',
+        maxAge: 7 * 24 * 3600 * 1000,
+        sameSite: config.cookieSameSite,
+        secure: config.cookieSecure,
+      });
+    }
+    res.json({ success: true, data });
+  });
+
+  static logout = catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const authHeader = req.headers.authorization || (req.headers['x-access-token'] as string) || req.cookies?.auth_token;
+    const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7).trim() : authHeader?.trim();
+    const refreshToken = req.body?.refreshToken || (req.headers['x-refresh-token'] as string) || req.cookies?.refresh_token;
+
+    await AuthService.logout(accessToken, refreshToken, req.user?.id);
+
+    res.clearCookie('auth_token', { path: '/' });
+    res.clearCookie('refresh_token', { path: '/api/auth' });
+
+    res.json({ success: true, message: 'Logged out successfully' });
+  });
+
+  static requestPasswordReset = catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const { email } = req.body;
+    if (!email || !email.trim()) {
+      throw new BadRequestError('Email address required');
+    }
+    const data = await AuthService.requestPasswordReset(email);
+    res.json({ success: true, data });
+  });
+
+  static resetPassword = catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      throw new BadRequestError('Reset code and new password required');
+    }
+    const data = await AuthService.resetPassword(token, newPassword);
+    res.json({ success: true, data });
+  });
   static googleUrl = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId) {
@@ -218,14 +285,25 @@ export class AuthController {
         return;
       }
 
-      const { user, token } = authResult;
+      const { user, token, refreshToken } = authResult;
 
       res.cookie('auth_token', token, {
         httpOnly: false,
         path: '/',
-        maxAge: 7 * 24 * 3600 * 1000,
-        sameSite: 'lax'
+        maxAge: 15 * 60 * 1000,
+        sameSite: config.cookieSameSite,
+        secure: config.cookieSecure,
       });
+
+      if (refreshToken) {
+        res.cookie('refresh_token', refreshToken, {
+          httpOnly: true,
+          path: '/api/auth',
+          maxAge: 7 * 24 * 3600 * 1000,
+          sameSite: config.cookieSameSite,
+          secure: config.cookieSecure,
+        });
+      }
 
       res.send(`
         <!DOCTYPE html>
@@ -250,13 +328,15 @@ export class AuthController {
             </div>
             <script>
               const token = ${JSON.stringify(token)};
+              const refreshToken = ${JSON.stringify(refreshToken || '')};
               const user = ${JSON.stringify(user)};
 
               // 1. Write to localStorage so app detects auth status
               try {
                 localStorage.setItem('auth_token', token);
+                if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
                 localStorage.setItem('user_profile', JSON.stringify(user));
-                localStorage.setItem('oauth_auth_success', JSON.stringify({ token, user, timestamp: Date.now() }));
+                localStorage.setItem('oauth_auth_success', JSON.stringify({ token, refreshToken, user, timestamp: Date.now() }));
               } catch (e) {
                 console.error('LocalStorage write failed:', e);
               }
@@ -265,7 +345,7 @@ export class AuthController {
               try {
                 if ('BroadcastChannel' in window) {
                   const bc = new BroadcastChannel('oauth_channel');
-                  bc.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, user });
+                  bc.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, refreshToken, user });
                   bc.close();
                 }
               } catch (e) {
@@ -275,7 +355,7 @@ export class AuthController {
               // 3. PostMessage to opener / parent windows
               try {
                 if (window.opener) {
-                  window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, user }, '*');
+                  window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, refreshToken, user }, '*');
                 }
               } catch (e) {
                 console.error('postMessage opener failed:', e);
@@ -283,7 +363,7 @@ export class AuthController {
 
               try {
                 if (window.parent && window.parent !== window) {
-                  window.parent.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, user }, '*');
+                  window.parent.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token, refreshToken, user }, '*');
                 }
               } catch (e) {
                 console.error('postMessage parent failed:', e);
@@ -406,57 +486,47 @@ export class AuthController {
       }
     }
 
-    // 3. Fallback / direct JSON login (e.g. for testing, preview, or curl)
-    const userEmail = email || 'devanshu.google@interviewops.io';
-    const userName = name || 'Devanshu Koli (Google)';
-    const data = await AuthService.googleLogin(userEmail, userName);
-    res.json({ success: true, data });
+    // 3. Fallback / direct JSON login (hard-gated behind development mode only)
+    if (process.env.NODE_ENV === 'development') {
+      const userEmail = email || 'devanshu.google@interviewops.io';
+      const userName = name || 'Devanshu Koli (Google)';
+      const data = await AuthService.googleLogin(userEmail, userName);
+      res.json({ success: true, data });
+      return;
+    }
+
+    throw new BadRequestError('Google authentication credential or authorization code is required.');
   });
 
   static me = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = req.user || AuthService.getCurrentUser();
-    if (!user) {
-      throw new UnauthorizedError('Unauthorized');
-    }
-    res.json({ success: true, data: user });
+    const user = req.user!;
+    const profile = await ProfileService.getProfile(user.id, user.email);
+    res.json({ success: true, data: profile });
   });
 
   static logins = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = req.user || AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-default';
-    const data = await AuthService.getLogins(userId);
+    const user = req.user!;
+    const data = await AuthService.getLogins(user.id);
     res.json({ success: true, data });
   });
 
   static changePassword = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = req.user || AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-default';
+    const user = req.user!;
     const { currentPassword, newPassword } = req.body;
-    await AuthService.changePassword(userId, currentPassword, newPassword);
+    await AuthService.changePassword(user.id, currentPassword, newPassword);
     res.json({ success: true, message: 'Password updated successfully' });
   });
 
-  static resetPassword = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const { email, newPassword } = req.body;
-    if (!email || !newPassword) {
-      throw new BadRequestError('Email and new password are required');
-    }
-    await AuthService.resetPassword(email, newPassword);
-    res.json({ success: true, message: 'Password reset successfully. You can now log in with your new password.' });
-  });
-
   static setup2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = req.user || AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-default';
-    const data = await AuthService.setup2FA(userId);
+    const user = req.user!;
+    const data = await AuthService.setup2FA(user.id);
     res.json({ success: true, data });
   });
 
   static verify2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = req.user || AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-default';
+    const user = req.user!;
     const { code } = req.body;
-    const { user: updatedUser, backupCodes } = await AuthService.verifyAndEnable2FA(userId, code);
+    const { user: updatedUser, backupCodes } = await AuthService.verifyAndEnable2FA(user.id, code);
     res.json({ success: true, data: { user: updatedUser, backupCodes }, message: '2FA enabled successfully' });
   });
 
@@ -470,33 +540,41 @@ export class AuthController {
     res.cookie('auth_token', data.token, {
       httpOnly: false,
       path: '/',
-      maxAge: 7 * 24 * 3600 * 1000,
-      sameSite: 'lax'
+      maxAge: 15 * 60 * 1000,
+      sameSite: config.cookieSameSite,
+      secure: config.cookieSecure,
     });
+
+    if (data.refreshToken) {
+      res.cookie('refresh_token', data.refreshToken, {
+        httpOnly: true,
+        path: '/api/auth',
+        maxAge: 7 * 24 * 3600 * 1000,
+        sameSite: config.cookieSameSite,
+        secure: config.cookieSecure,
+      });
+    }
 
     res.json({ success: true, data });
   });
 
   static disable2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = req.user || AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-default';
-    const { user: updatedUser } = await AuthService.disable2FA(userId);
+    const user = req.user!;
+    const { user: updatedUser } = await AuthService.disable2FA(user.id);
     res.json({ success: true, data: { user: updatedUser }, message: '2FA disabled successfully' });
   });
 
   static getSessions = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = req.user || AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-default';
+    const user = req.user!;
     const token = req.headers.authorization?.replace('Bearer ', '');
-    const data = await AuthService.getActiveSessions(userId, token);
+    const data = await AuthService.getActiveSessions(user.id, token);
     res.json({ success: true, data });
   });
 
   static revokeSession = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = req.user || AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-default';
+    const user = req.user!;
     const { sessionId } = req.params;
-    await AuthService.revokeSession(userId, sessionId);
+    await AuthService.revokeSession(user.id, sessionId);
     res.json({ success: true, message: 'Session revoked successfully' });
   });
 }

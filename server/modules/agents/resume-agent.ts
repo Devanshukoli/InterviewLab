@@ -1,6 +1,9 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
+import { ResumeAnalysisResult, ResumeProfile } from '../../../src/shared/types';
+
+export type { ResumeAnalysisResult, ResumeProfile };
 
 /**
  * Base error for ResumeAgent operational failures
@@ -50,40 +53,6 @@ export class ResumeLLMError extends ResumeAgentError {
     super(message, 502, details);
     this.name = 'ResumeLLMError';
   }
-}
-
-/**
- * Output schema returned by ResumeAgent
- */
-export interface ResumeAnalysisResult {
-  candidateName: string;
-  experienceYears: number;
-  summary: string;
-  skills: string[];
-  projects: string[];
-  education: string[];
-  strengths: string[];
-  weaknesses: string[];
-}
-
-/**
- * Backward compatible interface for ResumeProfile
- */
-export interface ResumeProfile {
-  candidateName?: string;
-  skills: string[];
-  experienceYears: number;
-  education: {
-    degree: string;
-    field: string;
-    institution: string;
-  }[];
-  history: {
-    role: string;
-    company: string;
-    duration: string;
-    description: string;
-  }[];
 }
 
 /**

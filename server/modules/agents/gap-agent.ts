@@ -1,8 +1,16 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
-import { ResumeAnalysisResult, ResumeProfile } from './resume-agent';
-import { JDAnalysisResult, JobRequirement } from './jd-agent';
+import { 
+  ResumeAnalysisResult, 
+  ResumeProfile, 
+  JDAnalysisResult, 
+  JobRequirement,
+  GapAnalysisResult,
+  GapAnalysis
+} from '../../../src/shared/types';
+
+export type { GapAnalysisResult, GapAnalysis };
 
 /**
  * Base error for GapAgent operational failures
@@ -52,32 +60,6 @@ export class GapLLMError extends GapAgentError {
     super(message, 502, details);
     this.name = 'GapLLMError';
   }
-}
-
-/**
- * Primary output schema returned by GapAgent
- */
-export interface GapAnalysisResult {
-  matchedSkills: string[];
-  missingSkills: string[];
-  recommendedTopics: string[];
-  overallMatch: number;
-}
-
-/**
- * Legacy GapAnalysis interface for backward compatibility
- */
-export interface GapAnalysis {
-  matchPercentage: number;
-  matchingSkills: string[];
-  missingSkills: string[];
-  seniorityGap: {
-    required: number;
-    actual: number;
-    isSufficient: boolean;
-  };
-  keyRisks: string[];
-  strengths: string[];
 }
 
 /**

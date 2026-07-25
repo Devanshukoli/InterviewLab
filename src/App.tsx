@@ -18,6 +18,14 @@ import {
   ProgressMetric, 
   InterviewOptions 
 } from './types';
+import { 
+  fetchWithAuth, 
+  getValidAuthToken, 
+  refreshAccessToken, 
+  isTokenExpiringSoon, 
+  clearAuthTokens,
+  logoutUser
+} from './lib/auth';
 
 export default function App() {
   // Authentication State
@@ -83,9 +91,20 @@ export default function App() {
     fetchHistory();
     fetchProgress();
 
+    // Proactive token refresh timer before access token expiration
+    const refreshTimer = setInterval(async () => {
+      const token = localStorage.getItem('auth_token');
+      if (token && isTokenExpiringSoon(token, 180)) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed && !localStorage.getItem('auth_token')) {
+          setUser(null);
+        }
+      }
+    }, 45000); // Check every 45 seconds
+
     // Listen for storage changes across tabs/popups
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'auth_token' || e.key === 'oauth_auth_success') {
+      if (e.key === 'auth_token' || e.key === 'refresh_token' || e.key === 'oauth_auth_success') {
         checkCurrentUser();
       }
     };
@@ -103,20 +122,25 @@ export default function App() {
       }
     } catch (e) {}
 
+    const handleAuthLogout = () => {
+      setUser(null);
+    };
+
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('auth_logout', handleAuthLogout);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('auth_logout', handleAuthLogout);
+      clearInterval(refreshTimer);
       if (bc) bc.close();
     };
   }, []);
 
   const checkCurrentUser = async () => {
     try {
-      const res = await fetch('/api/auth/me', {
-        headers: getAuthHeaders()
-      });
+      const res = await fetchWithAuth('/api/auth/me');
       if (res.status === 401) {
-        localStorage.removeItem('auth_token');
+        clearAuthTokens();
         setUser(null);
         return;
       }
@@ -124,20 +148,18 @@ export default function App() {
       if (json.success && json.data) {
         setUser(json.data);
       } else {
-        localStorage.removeItem('auth_token');
+        clearAuthTokens();
         setUser(null);
       }
     } catch (e) {
-      localStorage.removeItem('auth_token');
+      clearAuthTokens();
       setUser(null);
     }
   };
 
   const fetchResumes = async () => {
     try {
-      const res = await fetch('/api/resumes', {
-        headers: getAuthHeaders()
-      });
+      const res = await fetchWithAuth('/api/resumes');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setResumes(json.data);
@@ -151,9 +173,7 @@ export default function App() {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch('/api/interview/history', {
-        headers: getAuthHeaders()
-      });
+      const res = await fetchWithAuth('/api/interview/history');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setSessions(json.data);
@@ -167,9 +187,7 @@ export default function App() {
 
   const fetchProgress = async () => {
     try {
-      const res = await fetch('/api/progress', {
-        headers: getAuthHeaders()
-      });
+      const res = await fetchWithAuth('/api/progress');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setProgress(json.data);
@@ -393,15 +411,25 @@ export default function App() {
   };
 
   // Update Profile
-  const handleUpdateUser = (updatedFields: Partial<UserProfile>) => {
+  const handleUpdateUser = async (updatedFields: Partial<UserProfile>) => {
     if (!user) return;
-    const newProfile = { ...user, ...updatedFields };
-    setUser(newProfile);
+    const res = await fetch('/api/profile', {
+      method: 'PATCH',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedFields)
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || json.message || 'Failed to save settings');
+    }
+    if (json.data) {
+      setUser(prev => prev ? { ...prev, ...json.data } : json.data);
+    }
   };
 
   // Handle Logout
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token');
+  const handleLogout = async () => {
+    await logoutUser();
     setUser(null);
   };
 

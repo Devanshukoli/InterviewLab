@@ -1,6 +1,13 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
+import { 
+  EvaluationResult, 
+  AnswerEvaluation, 
+  EvaluationInput 
+} from '../../../src/shared/types';
+
+export type { EvaluationResult, AnswerEvaluation, EvaluationInput };
 
 /**
  * Base error for EvaluationAgent operational failures
@@ -50,36 +57,6 @@ export class EvaluationLLMError extends EvaluationAgentError {
     super(message, 502, details);
     this.name = 'EvaluationLLMError';
   }
-}
-
-/**
- * Output schema returned by EvaluationAgent
- */
-export interface EvaluationResult {
-  score: number;
-  strengths: string[];
-  weaknesses: string[];
-  missingConcepts: string[];
-  feedback: string;
-  idealAnswer: string;
-}
-
-/**
- * Legacy AnswerEvaluation interface for backward compatibility
- */
-export interface AnswerEvaluation extends EvaluationResult {
-  clarityRating?: 'poor' | 'fair' | 'good' | 'excellent';
-  missingPoints?: string[];
-  suggestedAnswer?: string;
-}
-
-/**
- * Input parameters payload for EvaluationAgent
- */
-export interface EvaluationInput {
-  question: string | { question?: string; questionText?: string; expectedTopics?: string[]; expectedConcepts?: string[]; [key: string]: any };
-  candidateAnswer: string;
-  expectedTopics?: string[];
 }
 
 /**

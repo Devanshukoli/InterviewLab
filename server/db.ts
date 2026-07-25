@@ -1,4 +1,7 @@
 import crypto from 'crypto';
+import { GeneratedQuestion, Evaluation, InterviewSession } from '../src/shared/types';
+
+export type { GeneratedQuestion, Evaluation, InterviewSession };
 
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const DEFAULT_USER_UUID = 'a1b2c3d4-0000-0000-0000-000000000001';
@@ -25,6 +28,16 @@ export interface User {
   pendingTwoFactorSecret?: string;
   backupCodes?: string[];
   appearance?: 'light' | 'dark' | 'system';
+  apiKeys?: {
+    gemini?: string;
+    openai?: string;
+    anthropic?: string;
+  };
+  notifications?: {
+    emailSummaries: boolean;
+    practiceReminders: boolean;
+    productUpdates: boolean;
+  };
 }
 
 export interface UserSession {
@@ -64,53 +77,11 @@ export interface JobDescription {
   uploadedAt: string;
 }
 
-export interface GeneratedQuestion {
-  id: string;
-  questionText: string;
-  type: 'technical' | 'behavioral' | 'situational' | 'background';
-  topic: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  expectedConcepts: string[];
-}
-
 export interface Answer {
   id: string;
   questionId: string;
   answerText: string;
   submittedAt: string;
-}
-
-export interface Evaluation {
-  id: string;
-  questionId: string;
-  score: number;
-  clarityRating: 'poor' | 'fair' | 'good' | 'excellent';
-  feedback: string;
-  missingPoints: string[];
-  suggestedAnswer: string;
-  evaluatedAt: string;
-}
-
-export interface InterviewSession {
-  id: string;
-  userId: string;
-  resumeId: string;
-  resumeTitle?: string;
-  jobDescriptionId: string | null;
-  jobTitle?: string;
-  status: 'draft' | 'in_progress' | 'completed';
-  options?: any;
-  questions: GeneratedQuestion[];
-  answers: Record<string, string>; // questionId -> answerText
-  evaluations: Record<string, Evaluation>; // questionId -> Evaluation
-  coachingReport?: {
-    overallScore: number;
-    domainStrengths: string[];
-    domainWeaknesses: string[];
-    recommendedTopics: { topic: string; priority: 'low' | 'medium' | 'high' }[];
-    summary: string;
-  };
-  createdAt: string;
 }
 
 export interface LearningProgress {
@@ -158,9 +129,17 @@ export interface UserLogin {
 export interface UserSettings {
   id: string;
   userId: string;
-  geminiApiKey?: string;
-  notificationsEnabled: boolean;
-  theme: string;
+  appearance?: 'light' | 'dark' | 'system';
+  apiKeys?: {
+    gemini?: string;
+    openai?: string;
+    anthropic?: string;
+  };
+  notifications?: {
+    emailSummaries: boolean;
+    practiceReminders: boolean;
+    productUpdates: boolean;
+  };
   updatedAt: string;
 }
 
@@ -194,6 +173,33 @@ export interface TraceMetadata {
   statusCode: string;
 }
 
+export interface RefreshToken {
+  id: string;
+  userId: string;
+  token: string;
+  expiresAt: number;
+  revoked: boolean;
+  createdAt: string;
+  replacedByToken?: string;
+}
+
+export interface RevokedToken {
+  tokenIdentifier: string;
+  jti?: string;
+  expiresAt: number;
+  revokedAt: string;
+}
+
+export interface PasswordResetToken {
+  id: string;
+  userId: string;
+  email: string;
+  token: string;
+  expiresAt: number;
+  used: boolean;
+  createdAt: string;
+}
+
 // In-Memory Database Stores
 class InMemoryDB {
   users: Map<string, User> = new Map();
@@ -205,6 +211,9 @@ class InMemoryDB {
   billingHistory: BillingHistory[] = [];
   userLogins: UserLogin[] = [];
   userSessions: UserSession[] = [];
+  refreshTokens: Map<string, RefreshToken> = new Map();
+  revokedAccessTokens: Map<string, RevokedToken> = new Map();
+  passwordResetTokens: Map<string, PasswordResetToken> = new Map();
   userSettings: Map<string, UserSettings> = new Map();
   promptVersions: PromptVersion[] = [];
   usages: AIUsage[] = [];

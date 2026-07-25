@@ -1,11 +1,8 @@
 import { db, BillingHistory, UserSubscription, stringToUUID } from '../../db';
-import { AuthService } from '../auth/auth.service';
 import { getSupabaseClient } from '../../services/supabase';
 
 export class BillingService {
-  static async getHistory(): Promise<BillingHistory[]> {
-    const user = AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-default';
+  static async getHistory(userId: string): Promise<BillingHistory[]> {
     const supabase = getSupabaseClient();
 
     if (supabase) {
@@ -37,9 +34,7 @@ export class BillingService {
     return db.billingHistory.filter(b => b.userId === userId);
   }
 
-  static async getSubscription(): Promise<UserSubscription | null> {
-    const user = AuthService.getCurrentUser();
-    if (!user) return null;
+  static async getSubscription(userId: string): Promise<UserSubscription | null> {
     const supabase = getSupabaseClient();
 
     if (supabase) {
@@ -47,7 +42,7 @@ export class BillingService {
         const { data, error } = await supabase
           .from('user_subscriptions')
           .select('*')
-          .eq('user_id', stringToUUID(user.id))
+          .eq('user_id', stringToUUID(userId))
           .maybeSingle();
 
         if (!error && data) {
@@ -60,7 +55,7 @@ export class BillingService {
             currentPeriodEnd: data.current_period_end,
             createdAt: data.created_at || new Date().toISOString()
           };
-          db.subscriptions.set(user.id, sub);
+          db.subscriptions.set(userId, sub);
           return sub;
         }
       } catch (e) {
@@ -68,6 +63,6 @@ export class BillingService {
       }
     }
 
-    return db.subscriptions.get(user.id) || null;
+    return db.subscriptions.get(userId) || null;
   }
 }

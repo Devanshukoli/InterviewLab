@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import { db, InterviewSession, GeneratedQuestion, Evaluation, Resume, JobDescription, stringToUUID } from '../../db';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
-import { AuthService } from '../auth/auth.service';
 import { getLLMProvider } from '../../services/llm';
 import { NotFoundError } from '../../middleware/error_handling';
 import { getSupabaseClient } from '../../services/supabase';
@@ -34,9 +33,10 @@ export class InterviewService {
     text: string, 
     title?: string, 
     fileType?: string, 
-    extraData?: { fileName?: string; fileSize?: number; fileUrl?: string }
+    extraData?: { fileName?: string; fileSize?: number; fileUrl?: string },
+    currentUser?: { id?: string }
   ): Promise<Resume> {
-    const user = AuthService.getCurrentUser();
+    const user = currentUser;
     const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
     const span = tracer.startSpan('resume-agent:parseAndExtract', undefined, undefined, aiAttrs);
     try {
@@ -102,9 +102,10 @@ export class InterviewService {
       fileName?: string;
       fileSize?: number;
       fileUrl?: string;
-    }
+    },
+    currentUser?: { id?: string }
   ): Promise<Resume> {
-    const user = AuthService.getCurrentUser();
+    const user = currentUser;
     const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
     const span = tracer.startSpan('resume-agent:updateResume', undefined, undefined, aiAttrs);
     try {
@@ -185,8 +186,8 @@ export class InterviewService {
     }
   }
 
-  static async uploadJobDescription(text: string): Promise<JobDescription> {
-    const user = AuthService.getCurrentUser();
+  static async uploadJobDescription(text: string, currentUser?: { id?: string }): Promise<JobDescription> {
+    const user = currentUser;
     const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
     const span = tracer.startSpan('jd-agent:parseJobDescription', undefined, undefined, aiAttrs);
     try {
@@ -239,7 +240,7 @@ export class InterviewService {
     interviewType?: string;
     numberOfQuestions?: number;
     difficulty?: string;
-  }) {
+  }, currentUser?: { id?: string }) {
     const {
       resumeId,
       jobDescriptionId,
@@ -249,7 +250,7 @@ export class InterviewService {
       difficulty = 'medium'
     } = payload;
 
-    const user = AuthService.getCurrentUser();
+    const user = currentUser;
     const aiAttrs = getAITelemetryAttributes({
       userId: user?.id,
       interviewType,
@@ -477,8 +478,8 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
     }
   }
 
-  static async evaluate(sessionId: string, questionId: string, answerText: string) {
-    const user = AuthService.getCurrentUser();
+  static async evaluate(sessionId: string, questionId: string, answerText: string, currentUser?: { id?: string }) {
+    const user = currentUser;
     const aiAttrs = getAITelemetryAttributes({
       userId: user?.id,
       sessionId
@@ -654,8 +655,8 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
     }
   }
 
-  static async getHistory(): Promise<InterviewSession[]> {
-    const user = AuthService.getCurrentUser();
+  static async getHistory(currentUser?: { id?: string }): Promise<InterviewSession[]> {
+    const user = currentUser;
     const userId = user?.id || 'usr-anonymous';
     const userUuid = stringToUUID(userId);
     const anonUuid = stringToUUID('usr-anonymous');

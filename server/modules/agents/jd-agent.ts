@@ -1,6 +1,9 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
+import { JDAnalysisResult, JobRequirement } from '../../../src/shared/types';
+
+export type { JDAnalysisResult, JobRequirement };
 
 /**
  * Base error for JDAgent operational failures
@@ -40,32 +43,6 @@ export class JDLLMError extends JDAgentError {
     super(message, 502, details);
     this.name = 'JDLLMError';
   }
-}
-
-/**
- * Output schema returned by JDAgent
- */
-export interface JDAnalysisResult {
-  jobTitle: string;
-  company: string;
-  requiredSkills: string[];
-  preferredSkills: string[];
-  experienceLevel: string;
-  responsibilities: string[];
-  keywords: string[];
-}
-
-/**
- * Legacy JobRequirement interface for cross-module compatibility
- */
-export interface JobRequirement {
-  title: string;
-  company: string;
-  experienceRequiredYears: number;
-  mandatorySkills: string[];
-  preferredSkills: string[];
-  responsibilities: string[];
-  roleType: 'remote' | 'hybrid' | 'onsite' | 'unspecified';
 }
 
 /**

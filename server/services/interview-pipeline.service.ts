@@ -1,9 +1,20 @@
-import { ResumeAgent, defaultResumeAgent, ResumeAnalysisResult } from '../modules/agents/resume-agent';
-import { JDAgent, defaultJdAgent, JDAnalysisResult } from '../modules/agents/jd-agent';
-import { GapAgent, defaultGapAgent, GapAnalysisResult } from '../modules/agents/gap-agent';
-import { QuestionAgent, defaultQuestionAgent, QuestionGenerationResult, QuestionItem } from '../modules/agents/question-agent';
+import { ResumeAgent, defaultResumeAgent } from '../modules/agents/resume-agent';
+import { JDAgent, defaultJdAgent } from '../modules/agents/jd-agent';
+import { GapAgent, defaultGapAgent } from '../modules/agents/gap-agent';
+import { QuestionAgent, defaultQuestionAgent } from '../modules/agents/question-agent';
+import { 
+  ResumeAnalysisResult, 
+  JDAnalysisResult, 
+  GapAnalysisResult, 
+  QuestionItem,
+  QuestionGenerationResult,
+  PipelineInput,
+  InterviewPipelineResult
+} from '../../src/shared/types';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../observability';
 import { AppError } from '../middleware/error_handling';
+
+export type { PipelineInput, InterviewPipelineResult };
 
 /**
  * Custom error thrown when the Interview Pipeline fails
@@ -13,31 +24,6 @@ export class InterviewPipelineError extends AppError {
     super(message, statusCode, details);
     this.name = 'InterviewPipelineError';
   }
-}
-
-/**
- * Input parameters required for the Interview Pipeline
- */
-export interface PipelineInput {
-  resumeText: string;
-  jdText?: string | null;
-  userId?: string;
-  interviewId?: string;
-  sessionId?: string;
-  interviewType?: string;
-  difficulty?: string;
-  experienceLevel?: string;
-  numberOfQuestions?: number;
-}
-
-/**
- * Structured result returned by the Interview Pipeline
- */
-export interface InterviewPipelineResult {
-  questions: QuestionItem[];
-  resumeAnalysis?: ResumeAnalysisResult;
-  jdAnalysis?: JDAnalysisResult | null;
-  gapAnalysis?: GapAnalysisResult;
 }
 
 /**

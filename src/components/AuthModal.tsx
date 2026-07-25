@@ -10,11 +10,15 @@ interface AuthModalProps {
 
 export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [viewMode, setViewMode] = useState<'auth' | 'forgot_password' | 'reset_password'>('auth');
   const [email, setEmail] = useState('architect@interviewops.io');
   const [password, setPassword] = useState('••••••••••••');
   const [name, setName] = useState('Devanshu Koli');
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // 2FA Challenge State
   const [twoFactorState, setTwoFactorState] = useState<{ required: boolean; mfaToken: string; email: string } | null>(null);
@@ -48,9 +52,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleAuthSuccess = (token: string, user: UserProfile) => {
+    const handleAuthSuccess = (token: string, user: UserProfile, refreshToken?: string) => {
       if (token) {
         localStorage.setItem('auth_token', token);
+      }
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken);
       }
       if (user) {
         localStorage.setItem('user_profile', JSON.stringify(user));
@@ -77,8 +84,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         return;
       }
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        const { token, user } = event.data;
-        handleAuthSuccess(token, user);
+        const { token, user, refreshToken } = event.data;
+        handleAuthSuccess(token, user, refreshToken);
       } else if (event.data?.type === 'OAUTH_REQUIRES_2FA') {
         handle2FARequired(event.data.mfaToken, event.data.email);
       } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
@@ -93,7 +100,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         bc = new BroadcastChannel('oauth_channel');
         bc.onmessage = (event) => {
           if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-            handleAuthSuccess(event.data.token, event.data.user);
+            handleAuthSuccess(event.data.token, event.data.user, event.data.refreshToken);
           } else if (event.data?.type === 'OAUTH_REQUIRES_2FA') {
             handle2FARequired(event.data.mfaToken, event.data.email);
           } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
@@ -112,7 +119,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           const parsed = JSON.parse(event.newValue);
           if (parsed.token && parsed.user) {
             localStorage.removeItem('oauth_auth_success');
-            handleAuthSuccess(parsed.token, parsed.user);
+            handleAuthSuccess(parsed.token, parsed.user, parsed.refreshToken);
           }
         } catch (e) {}
       } else if (event.key === 'pending_mfa_session' && event.newValue) {
@@ -134,7 +141,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           const parsed = JSON.parse(oauthData);
           if (parsed.token && parsed.user) {
             localStorage.removeItem('oauth_auth_success');
-            handleAuthSuccess(parsed.token, parsed.user);
+            handleAuthSuccess(parsed.token, parsed.user, parsed.refreshToken);
           }
         } catch (e) {}
       }
@@ -191,6 +198,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           if (json.data.token) {
             localStorage.setItem('auth_token', json.data.token);
           }
+          if (json.data.refreshToken) {
+            localStorage.setItem('refresh_token', json.data.refreshToken);
+          }
           onSuccess(json.data.user);
           onClose();
         }
@@ -226,6 +236,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         if (json.data.token) {
           localStorage.setItem('auth_token', json.data.token);
         }
+        if (json.data.refreshToken) {
+          localStorage.setItem('refresh_token', json.data.refreshToken);
+        }
         localStorage.setItem('user_profile', JSON.stringify(json.data.user));
         setTwoFactorState(null);
         setTotpCode('');
@@ -236,6 +249,63 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       }
     } catch (err: any) {
       setError(err.message || '2FA verification failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRequestReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch('/api/auth/request-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSuccessMsg(json.data.message || 'Reset instructions sent!');
+        if (json.data.resetToken) {
+          setResetToken(json.data.resetToken);
+        }
+        setViewMode('reset_password');
+      } else {
+        setError(json.error || 'Failed to request password reset');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to request password reset');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, newPassword })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSuccessMsg('Password reset successfully! Please log in with your new password.');
+        setViewMode('auth');
+        setMode('signin');
+        setPassword(newPassword);
+        setResetToken('');
+        setNewPassword('');
+      } else {
+        setError(json.error || 'Failed to reset password');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to reset password');
     } finally {
       setIsLoading(false);
     }
@@ -384,6 +454,158 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               </button>
             </form>
           </div>
+        ) : viewMode === 'forgot_password' ? (
+          /* Request Password Reset View */
+          <div className="space-y-6">
+            <div className="text-center space-y-2">
+              <div className="inline-flex w-12 h-12 bg-purple-500/10 border border-purple-500/20 rounded-xl items-center justify-center text-purple-600 dark:text-purple-400 mb-1">
+                <KeyRound className="w-6 h-6" />
+              </div>
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
+                Forgot Password
+              </h2>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Enter your account email address and we'll generate a 6-digit verification reset code.
+              </p>
+            </div>
+
+            <form onSubmit={handleRequestReset} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">Email Address</label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-2.5" />
+                  <input
+                    type="email"
+                    required
+                    autoFocus
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="architect@interviewops.io"
+                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {error && <p className="text-xs text-red-500 dark:text-red-400 font-mono text-center">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={isLoading || !email.trim()}
+                className="w-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-60"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Requesting Code...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Send Reset Code</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('auth');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className="w-full text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 py-1.5 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+            </form>
+          </div>
+        ) : viewMode === 'reset_password' ? (
+          /* Reset Password Form View */
+          <div className="space-y-6">
+            <div className="text-center space-y-2">
+              <div className="inline-flex w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl items-center justify-center text-emerald-600 dark:text-emerald-400 mb-1">
+                <Lock className="w-6 h-6" />
+              </div>
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
+                Set New Password
+              </h2>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Enter your 6-digit reset code and your new password below.
+              </p>
+            </div>
+
+            {successMsg && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400 text-xs font-mono text-center">
+                {successMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">Reset Code</label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    required
+                    value={resetToken}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    placeholder="123456"
+                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm font-mono text-center tracking-widest text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">New Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-2.5" />
+                  <input
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {error && <p className="text-xs text-red-500 dark:text-red-400 font-mono text-center">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={isLoading || !resetToken.trim() || !newPassword}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-60"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Resetting Password...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Reset Password & Proceed</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('auth');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className="w-full text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 py-1.5 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+            </form>
+          </div>
         ) : (
           /* Standard Sign In / Sign Up Mode View */
           <>
@@ -400,6 +622,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                   : 'Start preparing for senior engineering interviews'}
               </p>
             </div>
+
+            {successMsg && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400 text-xs font-mono text-center">
+                {successMsg}
+              </div>
+            )}
 
             {/* Google Sign In Button */}
             <button
@@ -472,7 +700,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">Password</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">Password</label>
+                  {mode === 'signin' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setViewMode('forgot_password');
+                        setError(null);
+                        setSuccessMsg(null);
+                      }}
+                      className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-2.5" />
                   <input

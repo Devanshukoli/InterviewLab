@@ -4,7 +4,7 @@ import { BadRequestError, NotFoundError, catchAsync } from '../../middleware/err
 
 export class HistoryController {
   static getResumes = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const data = await HistoryService.getResumes();
+    const data = await HistoryService.getResumes(req.user?.id);
     res.json({ success: true, data });
   });
 
@@ -18,7 +18,7 @@ export class HistoryController {
   });
 
   static getJobDescriptions = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const data = await HistoryService.getJobDescriptions();
+    const data = await HistoryService.getJobDescriptions(req.user?.id);
     res.json({ success: true, data });
   });
 }

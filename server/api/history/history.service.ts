@@ -1,11 +1,8 @@
 import { db, Resume, JobDescription, stringToUUID } from '../../db';
-import { AuthService } from '../auth/auth.service';
 import { getSupabaseClient } from '../../services/supabase';
 
 export class HistoryService {
-  static async getResumes(): Promise<Resume[]> {
-    const user = AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-anonymous';
+  static async getResumes(userId: string = 'usr-anonymous'): Promise<Resume[]> {
     const userUuid = stringToUUID(userId);
     const anonUuid = stringToUUID('usr-anonymous');
 
@@ -60,9 +57,7 @@ export class HistoryService {
     return true;
   }
 
-  static async getJobDescriptions(): Promise<JobDescription[]> {
-    const user = AuthService.getCurrentUser();
-    const userId = user?.id || 'usr-anonymous';
+  static async getJobDescriptions(userId: string = 'usr-anonymous'): Promise<JobDescription[]> {
     const userUuid = stringToUUID(userId);
     const anonUuid = stringToUUID('usr-anonymous');
 
