@@ -7,9 +7,6 @@ import { config } from '../../config';
 export class AuthController {
   static register = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { email, name, password } = req.body;
-    if (!email || !name || !password) {
-      throw new BadRequestError('Missing registration details (email, name, and password required)');
-    }
     const data = await AuthService.register(email, name, password);
     if (data.refreshToken) {
       res.cookie('refresh_token', data.refreshToken, {
@@ -25,9 +22,6 @@ export class AuthController {
 
   static login = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
-    if (!email || !password) {
-      throw new BadRequestError('Email and password required');
-    }
     const data = await AuthService.login(email, password);
     if (data.refreshToken) {
       res.cookie('refresh_token', data.refreshToken, {
@@ -74,18 +68,12 @@ export class AuthController {
 
   static requestPasswordReset = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { email } = req.body;
-    if (!email || !email.trim()) {
-      throw new BadRequestError('Email address required');
-    }
     const data = await AuthService.requestPasswordReset(email);
     res.json({ success: true, data });
   });
 
   static resetPassword = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { token, newPassword } = req.body;
-    if (!token || !newPassword) {
-      throw new BadRequestError('Reset code and new password required');
-    }
     const data = await AuthService.resetPassword(token, newPassword);
     res.json({ success: true, data });
   });
@@ -532,9 +520,6 @@ export class AuthController {
 
   static verifyLogin2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { mfaToken, code } = req.body;
-    if (!mfaToken || !code) {
-      throw new BadRequestError('MFA session token and 6-digit verification code are required');
-    }
     const data = await AuthService.verifyMfaLogin(mfaToken, code);
 
     res.cookie('auth_token', data.token, {

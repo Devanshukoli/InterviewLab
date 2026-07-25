@@ -1,6 +1,7 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
+import { PromptService } from '../../services/prompt.service';
 import { 
   ResumeAnalysisResult, 
   ResumeProfile, 
@@ -159,10 +160,10 @@ export function validateAndNormalizeGapAnalysis(obj: any): {
  * GapAgent compares candidate resume data with job descriptions to identify skill gaps and recommended topics.
  */
 export class GapAgent {
-  private providerName?: string;
+  private providerName: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName;
+    this.providerName = providerName || 'gemini';
   }
 
   /**
@@ -183,54 +184,19 @@ export class GapAgent {
       const provider = getLLMProvider(this.providerName);
       const hasJd = Boolean(jd && (jd.jobTitle || jd.title || jd.requiredSkills || jd.mandatorySkills || jd.responsibilities));
 
-      const systemInstruction = `You are an expert AI Career and Technical Interview Gap Analysis Agent.
-Your job is to compare a candidate's resume analysis against job description requirements (if provided) or analyze the resume directly.
-You MUST return ONLY a raw JSON object matching the requested schema.
-Do NOT include markdown formatting, code fences (\`\`\`json), or conversational commentary.`;
-
+      const { data: promptData } = PromptService.getActivePrompt('gap-agent');
+      const systemInstruction = promptData.systemInstruction;
       let initialPrompt = '';
 
       if (hasJd) {
-        initialPrompt = `Compare the candidate's resume analysis against the target job description requirements.
-
-Candidate Resume Analysis:
-${JSON.stringify(resume, null, 2)}
-
-Target Job Description Analysis:
-${JSON.stringify(jd, null, 2)}
-
-Return a structured JSON object strictly matching this schema:
-{
-  "matchedSkills": ["skill candidate has that matches job requirements"],
-  "missingSkills": ["required/preferred skill in job that candidate lacks or needs strengthening"],
-  "recommendedTopics": ["interview topic or technical area candidate should prepare for"],
-  "overallMatch": 85
-}
-
-Rules:
-- "matchedSkills": array of strings
-- "missingSkills": array of strings
-- "recommendedTopics": array of strings
-- "overallMatch": integer between 0 and 100 representing overall compatibility match score`;
+        initialPrompt = PromptService.interpolate(promptData.initialPromptWithJd || '', {
+          resume,
+          jd
+        });
       } else {
-        initialPrompt = `No job description provided. Analyze the candidate's resume analysis and recommend interview preparation topics based on their experience level, technical skills, and background.
-
-Candidate Resume Analysis:
-${JSON.stringify(resume, null, 2)}
-
-Return a structured JSON object strictly matching this schema:
-{
-  "matchedSkills": ["candidate skills extracted from resume"],
-  "missingSkills": [],
-  "recommendedTopics": ["key interview topics based on candidate experience and stack"],
-  "overallMatch": 100
-}
-
-Rules:
-- "matchedSkills": array of candidate's key skills
-- "missingSkills": empty array [] since no JD was supplied
-- "recommendedTopics": array of recommended interview preparation topics tailored to candidate's background
-- "overallMatch": 100`;
+        initialPrompt = PromptService.interpolate(promptData.initialPromptWithoutJd || '', {
+          resume
+        });
       }
 
       let rawOutput: string;

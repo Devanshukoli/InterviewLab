@@ -2,10 +2,25 @@ import { Request, Response } from 'express';
 import { InterviewService } from './interview.service';
 import { BadRequestError, NotFoundError, catchAsync } from '../../middleware/error_handling';
 import path from 'path';
+import { createRequire } from 'module';
 
-function extractTextFromBuffer(buffer: Buffer, mimetype: string, filename: string): string {
+const require = createRequire(import.meta.url);
+const pdf = require('pdf-parse');
+
+async function extractTextFromBuffer(buffer: Buffer, mimetype: string, filename: string): Promise<string> {
   if (mimetype.includes('text') || filename.toLowerCase().endsWith('.txt')) {
     return buffer.toString('utf-8');
+  }
+
+  if (mimetype.includes('pdf') || filename.toLowerCase().endsWith('.pdf')) {
+    try {
+      const parsed = await pdf(buffer);
+      if (parsed && parsed.text && parsed.text.trim().length > 10) {
+        return parsed.text;
+      }
+    } catch (err) {
+      console.error('🔮 [PDF Extraction] pdf-parse failed, falling back to basic extraction:', err);
+    }
   }
 
   const raw = buffer.toString('binary');
@@ -25,9 +40,6 @@ function extractTextFromBuffer(buffer: Buffer, mimetype: string, filename: strin
 export class InterviewController {
   static uploadResume = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { text, title, fileType } = req.body;
-    if (!text || typeof text !== 'string' || !text.trim()) {
-      throw new BadRequestError('Resume text content is required');
-    }
     const data = await InterviewService.uploadResume(text, title, fileType, undefined, req.user);
     res.json({ success: true, data });
   });
@@ -42,7 +54,7 @@ export class InterviewController {
     const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
     const fileType = (ext === 'pdf' ? 'pdf' : ext === 'docx' || ext === 'doc' ? 'docx' : 'text') as any;
 
-    const extractedText = extractTextFromBuffer(file.buffer, file.mimetype, file.originalname);
+    const extractedText = await extractTextFromBuffer(file.buffer, file.mimetype, file.originalname);
 
     const data = await InterviewService.uploadResume(
       extractedText,
@@ -78,7 +90,7 @@ export class InterviewController {
       const file = req.file;
       const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
       const fileType = (ext === 'pdf' ? 'pdf' : ext === 'docx' || ext === 'doc' ? 'docx' : 'text');
-      const extractedText = extractTextFromBuffer(file.buffer, file.mimetype, file.originalname);
+      const extractedText = await extractTextFromBuffer(file.buffer, file.mimetype, file.originalname);
 
       payload = {
         title: req.body.title || file.originalname.replace(/\.[^/.]+$/, ''),
@@ -98,27 +110,18 @@ export class InterviewController {
 
   static uploadJobDescription = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { text } = req.body;
-    if (!text || typeof text !== 'string' || !text.trim()) {
-      throw new BadRequestError('Job description text content is required');
-    }
     const data = await InterviewService.uploadJobDescription(text, req.user);
     res.json({ success: true, data });
   });
 
   static generateQuestions = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { resumeId } = req.body;
-    if (!resumeId) {
-      throw new BadRequestError('resumeId parameter is required');
-    }
     const data = await InterviewService.generateQuestions(req.body, req.user);
     res.json({ success: true, data });
   });
 
   static evaluate = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { sessionId, questionId, answerText } = req.body;
-    if (!sessionId || !questionId || !answerText) {
-      throw new BadRequestError('sessionId, questionId, and answerText are required');
-    }
     const data = await InterviewService.evaluate(sessionId, questionId, answerText, req.user);
     res.json({ success: true, data });
   });

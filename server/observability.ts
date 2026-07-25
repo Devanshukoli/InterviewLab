@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { trace, metrics, context, SpanStatusCode } from '@opentelemetry/api';
 import { AsyncLocalStorage } from 'async_hooks';
+import { PromptService } from './services/prompt.service';
 
 const meter = metrics.getMeter(process.env.OTEL_SERVICE_NAME || 'interviewops-api');
 
@@ -359,7 +360,7 @@ export function getAITelemetryAttributes(params?: AITelemetryParams): Record<str
     'session.id': params?.sessionId || process.env.DEFAULT_SESSION_ID || 'sess-default',
     'llm.provider': params?.llmProvider || process.env.LLM_PROVIDER || 'google',
     'llm.model': params?.llmModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    'prompt.version': params?.promptVersion || 'v1.0',
+    'prompt.version': params?.promptVersion || PromptService.getActiveVersion(params?.agentName),
     'interview.type': params?.interviewType || 'technical',
     'difficulty': params?.difficulty || 'medium',
     'experience.level': params?.experienceLevel || 'mid',
@@ -546,7 +547,7 @@ export function requestTracing(req: Request, res: Response, next: NextFunction) 
 
   logContextStore.run(logCtx, () => {
     const originalEnd = res.end;
-    res.end = function(chunk?: any, encoding?: any, callback?: any) {
+    res.end = function(this: any, chunk?: any, encoding?: any, callback?: any) {
       const duration = Date.now() - startTime;
       const status = res.statusCode >= 400 ? 'ERROR' : 'OK';
 

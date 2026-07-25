@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config';
+import { getCurrentUserKeys } from '../middleware/userContext.middleware';
 
 export interface LLMProvider {
   name: string;
@@ -17,6 +18,14 @@ export class GeminiProvider implements LLMProvider {
   private ai: GoogleGenAI | null = null;
 
   private getClient(): GoogleGenAI {
+    const userKeys = getCurrentUserKeys();
+    const userApiKey = userKeys?.gemini;
+
+    if (userApiKey) {
+      console.log('🔮 [GeminiProvider] Using request-scoped User BYOK key');
+      return new GoogleGenAI({ apiKey: userApiKey });
+    }
+
     if (!this.ai) {
       const apiKey = config.geminiApiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -77,6 +86,14 @@ export class OpenAIProvider implements LLMProvider {
   private client: OpenAI | null = null;
 
   private getClient(): OpenAI {
+    const userKeys = getCurrentUserKeys();
+    const userApiKey = userKeys?.openai;
+
+    if (userApiKey) {
+      console.log('🔮 [OpenAIProvider] Using request-scoped User BYOK key');
+      return new OpenAI({ apiKey: userApiKey });
+    }
+
     if (!this.client) {
       const apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY;
       if (!apiKey) {
@@ -137,6 +154,14 @@ export class AnthropicProvider implements LLMProvider {
   private client: Anthropic | null = null;
 
   private getClient(): Anthropic {
+    const userKeys = getCurrentUserKeys();
+    const userApiKey = userKeys?.anthropic;
+
+    if (userApiKey) {
+      console.log('🔮 [AnthropicProvider] Using request-scoped User BYOK key');
+      return new Anthropic({ apiKey: userApiKey });
+    }
+
     if (!this.client) {
       const apiKey = config.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {

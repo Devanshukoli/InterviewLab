@@ -1,6 +1,7 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
+import { PromptService } from '../../services/prompt.service';
 import { 
   ResumeAnalysisResult, 
   ResumeProfile, 
@@ -178,10 +179,10 @@ export function validateAndNormalizeQuestionResult(
  * QuestionAgent synthesizes structured interview questions based on resume, gap analysis, and session params.
  */
 export class QuestionAgent {
-  private providerName?: string;
+  private providerName: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName;
+    this.providerName = providerName || 'gemini';
   }
 
   /**
@@ -232,46 +233,19 @@ export class QuestionAgent {
 
     try {
       const provider = getLLMProvider(this.providerName);
-
-      const systemInstruction = `You are an expert AI Technical Interviewer & Question Authoring Agent.
-Your task is to generate tailor-made, high-quality interview questions based on candidate resume analysis and gap assessment.
-You MUST return ONLY a raw JSON object matching the requested schema.
-Do NOT include markdown formatting, code fences (\`\`\`json), or conversational commentary.`;
-
-      const initialPrompt = `Generate exactly ${questionCount} structured interview questions tailored for the candidate based on the parameters below.
-
-Candidate Resume Analysis:
-${JSON.stringify(resumeData, null, 2)}
-
-${gapData ? `Gap Analysis / Skill Assessment:\n${JSON.stringify(gapData, null, 2)}` : 'No explicit Job Description gap assessment provided.'}
-
-Interview Parameters:
-- Interview Type: ${interviewType}
-- Difficulty Level: ${difficulty}
-- Candidate Experience Level: ${experienceLevel}
-- Number of Questions Required: ${questionCount}
-
-Return a structured JSON object strictly matching this schema:
-
-{
-  "questions": [
-    {
-      "id": "q-1",
-      "question": "Detailed technical or scenario interview question text",
-      "category": "${interviewType}",
-      "difficulty": "${difficulty}",
-      "expectedTopics": ["topic1", "topic2", "topic3"]
-    }
-  ]
-}
-
-Schema Rules:
-- "questions": array of exactly ${questionCount} question objects
-- "id": unique string identifier (e.g. "q-1", "q-2")
-- "question": string containing the question text
-- "category": string representing domain/category (e.g. "${interviewType}")
-- "difficulty": string representing difficulty (e.g. "${difficulty}")
-- "expectedTopics": array of key technical concepts/topics expected in a good candidate answer`;
+      const { data: promptData } = PromptService.getActivePrompt('question-agent');
+      const systemInstruction = promptData.systemInstruction;
+      const gapSection = gapData 
+        ? `Gap Analysis / Skill Assessment:\n${JSON.stringify(gapData, null, 2)}` 
+        : 'No explicit Job Description gap assessment provided.';
+      const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {
+        questionCount,
+        resumeData,
+        gapSection,
+        interviewType,
+        difficulty,
+        experienceLevel
+      });
 
       let rawOutput: string;
       try {

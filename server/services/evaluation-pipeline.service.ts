@@ -8,7 +8,7 @@ import {
 } from '../../src/shared/types';
 import { db } from '../db';
 import { getSupabaseClient } from './supabase';
-import { tracer, getAITelemetryAttributes } from '../observability';
+import { tracer, getAITelemetryAttributes, recordMetric } from '../observability';
 import { AppError } from '../middleware/error_handling';
 
 export type { EvaluationPipelineInput, EvaluationPipelineResult };
@@ -76,6 +76,7 @@ export class EvaluationPipelineService {
             input.expectedTopics
           )
         );
+        recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': evaluationResult.score });
         evalSpan.end('OK', { ...aiAttrs, 'evaluation.score': evaluationResult.score });
       } catch (evalErr: any) {
         evalSpan.recordException(evalErr);

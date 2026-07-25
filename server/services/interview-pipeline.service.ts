@@ -120,6 +120,10 @@ export class InterviewPipelineService {
           experienceLevel: input.experienceLevel || 'mid',
           numberOfQuestions: input.numberOfQuestions || 5
         }));
+        recordMetric.recordQuestionsGenerated(questionResult.questions.length, {
+          'interview.type': input.interviewType || 'technical',
+          difficulty: input.difficulty || 'medium'
+        });
         questionSpan.end('OK', { ...aiAttrs, 'questions.count': questionResult.questions.length });
       } catch (qErr: any) {
         questionSpan.recordException(qErr);

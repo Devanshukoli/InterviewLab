@@ -1,6 +1,7 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
+import { PromptService } from '../../services/prompt.service';
 import { 
   EvaluationResult, 
   AnswerEvaluation, 
@@ -146,10 +147,10 @@ export function validateAndNormalizeCoachResult(obj: any): {
  * CoachAgent analyzes evaluation results and interview history to generate actionable coaching guidance.
  */
 export class CoachAgent {
-  private providerName?: string;
+  private providerName: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName;
+    this.providerName = providerName || 'gemini';
   }
 
   /**
@@ -181,33 +182,15 @@ export class CoachAgent {
 
     try {
       const provider = getLLMProvider(this.providerName);
-
-      const systemInstruction = `You are an expert AI Technical Career Coach Agent.
-Analyze the candidate's interview answer evaluations and previous interview history to synthesize holistic career coaching guidance.
-You MUST return ONLY a raw JSON object matching the requested schema.
-Do NOT include markdown formatting, code fences (\`\`\`json), or conversational commentary.`;
-
-      const initialPrompt = `Analyze the candidate's interview evaluation results and interview history to synthesize a personalized coaching recommendation.
-
-Evaluation Results:
-${JSON.stringify(evaluationsData, null, 2)}
-
-${interviewHistoryData ? `Previous Interview History:\n${JSON.stringify(interviewHistoryData, null, 2)}` : 'No previous interview history available.'}
-
-Return a structured JSON object strictly matching this schema:
-
-{
-  "overallPerformance": "Comprehensive assessment of the candidate's performance across evaluated questions",
-  "topicsToStudy": ["Topic or skill area needing focused review 1", "Topic 2"],
-  "recommendedDifficulty": "Medium",
-  "nextSteps": ["Actionable step for candidate 1", "Actionable step 2"]
-}
-
-Schema Rules:
-- "overallPerformance": string detailing overall performance feedback and key takeaways
-- "topicsToStudy": array of strings listing specific technical topics or skills candidate should study
-- "recommendedDifficulty": string specifying recommended target difficulty for next practice session (e.g. "Easy", "Medium", "Hard")
-- "nextSteps": array of strings listing concrete, actionable next steps for interview preparation`;
+      const { data: promptData } = PromptService.getActivePrompt('coach-agent');
+      const systemInstruction = promptData.systemInstruction;
+      const historySection = interviewHistoryData 
+        ? `Previous Interview History:\n${JSON.stringify(interviewHistoryData, null, 2)}` 
+        : 'No previous interview history available.';
+      const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {
+        evaluationsData,
+        historySection
+      });
 
       let rawOutput: string;
       try {

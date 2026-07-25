@@ -38,6 +38,12 @@ export interface User {
     practiceReminders: boolean;
     productUpdates: boolean;
   };
+  privacy?: {
+    dataRetentionDays: number;
+    anonymousAIUsage: boolean;
+    allowTelemetry: boolean;
+    searchHistoryCleared: boolean;
+  };
 }
 
 export interface UserSession {
@@ -139,6 +145,12 @@ export interface UserSettings {
     emailSummaries: boolean;
     practiceReminders: boolean;
     productUpdates: boolean;
+  };
+  privacy?: {
+    dataRetentionDays: number; // 0 = Infinite, or 30, 90 days etc.
+    anonymousAIUsage: boolean;
+    allowTelemetry: boolean;
+    searchHistoryCleared: boolean;
   };
   updatedAt: string;
 }

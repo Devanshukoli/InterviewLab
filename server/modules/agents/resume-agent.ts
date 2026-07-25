@@ -2,6 +2,7 @@ import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
 import { ResumeAnalysisResult, ResumeProfile } from '../../../src/shared/types';
+import { PromptService } from '../../services/prompt.service';
 
 export type { ResumeAnalysisResult, ResumeProfile };
 
@@ -162,10 +163,10 @@ export function validateAndNormalizeResumeAnalysis(obj: any): {
  * ResumeAgent analyzes uploaded resume text using the configured LLM provider.
  */
 export class ResumeAgent {
-  private providerName?: string;
+  private providerName: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName;
+    this.providerName = providerName || 'gemini';
   }
 
   /**
@@ -181,39 +182,11 @@ export class ResumeAgent {
 
     try {
       const provider = getLLMProvider(this.providerName);
-
-      const systemInstruction = `You are an expert AI Resume Analysis Agent.
-Analyze the provided resume text and extract candidate details.
-You MUST return ONLY a raw JSON object matching the requested schema.
-Do NOT include markdown formatting, code fences (\`\`\`json), or conversational commentary.`;
-
-      const initialPrompt = `Analyze the uploaded resume text and return a structured JSON object strictly matching this schema:
-
-{
-  "candidateName": "Full name of candidate or empty string if unknown",
-  "experienceYears": 5,
-  "summary": "Professional background summary",
-  "skills": ["skill1", "skill2"],
-  "projects": ["project1 description", "project2 description"],
-  "education": ["degree/certification and institution"],
-  "strengths": ["key strength 1", "key strength 2"],
-  "weaknesses": ["area for growth 1", "area for growth 2"]
-}
-
-Schema Rules:
-- "candidateName": string
-- "experienceYears": non-negative number
-- "summary": string
-- "skills": array of strings
-- "projects": array of strings
-- "education": array of strings
-- "strengths": array of strings
-- "weaknesses": array of strings
-
-Resume Text:
-"""
-${resumeText.trim()}
-"""`;
+      const { data: promptData } = PromptService.getActivePrompt('resume-agent');
+      const systemInstruction = promptData.systemInstruction;
+      const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {
+        resumeText: resumeText.trim()
+      });
 
       let rawOutput: string;
       try {

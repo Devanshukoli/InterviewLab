@@ -1,6 +1,7 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
+import { PromptService } from '../../services/prompt.service';
 import { JDAnalysisResult, JobRequirement } from '../../../src/shared/types';
 
 export type { JDAnalysisResult, JobRequirement };
@@ -136,10 +137,10 @@ export function validateAndNormalizeJDAnalysis(obj: any): {
  * JDAgent analyzes job descriptions using the configured LLM provider.
  */
 export class JDAgent {
-  private providerName?: string;
+  private providerName: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName;
+    this.providerName = providerName || 'gemini';
   }
 
   /**
@@ -156,37 +157,11 @@ export class JDAgent {
 
     try {
       const provider = getLLMProvider(this.providerName);
-
-      const systemInstruction = `You are an expert AI Job Description Analysis Agent.
-Analyze the provided Job Description text and extract structured key details.
-You MUST return ONLY a raw JSON object matching the requested schema.
-Do NOT include markdown formatting, code fences (\`\`\`json), or conversational commentary.`;
-
-      const initialPrompt = `Analyze the job description text and return a structured JSON object strictly matching this schema:
-
-{
-  "jobTitle": "Job title or empty string if unknown",
-  "company": "Company name or empty string if unknown",
-  "requiredSkills": ["skill1", "skill2"],
-  "preferredSkills": ["skill1", "skill2"],
-  "experienceLevel": "Junior / Mid / Senior / Lead / Executive or experience years required",
-  "responsibilities": ["responsibility 1", "responsibility 2"],
-  "keywords": ["keyword 1", "keyword 2"]
-}
-
-Schema Rules:
-- "jobTitle": string
-- "company": string
-- "requiredSkills": array of strings
-- "preferredSkills": array of strings
-- "experienceLevel": string
-- "responsibilities": array of strings
-- "keywords": array of strings
-
-Job Description Text:
-"""
-${jdText.trim()}
-"""`;
+      const { data: promptData } = PromptService.getActivePrompt('jd-agent');
+      const systemInstruction = promptData.systemInstruction;
+      const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {
+        jdText: jdText.trim()
+      });
 
       let rawOutput: string;
       try {

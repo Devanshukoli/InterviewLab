@@ -2,7 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { config } from '../config';
-import { User, db } from '../db';
+import { User, db, stringToUUID } from '../db';
+import { userContextStorage } from './userContext.middleware';
+import { getSupabaseClient } from '../services/supabase';
 
 export interface JwtPayload {
   id: string;
@@ -12,6 +14,7 @@ export interface JwtPayload {
   jti?: string;
   iat?: number;
   exp?: number;
+  sessionId?: string;
 }
 
 export interface RefreshJwtPayload {
@@ -34,14 +37,15 @@ declare global {
 /**
  * Signs a short-lived access JWT token containing user identity details (valid for 15m)
  */
-export function generateJwtToken(user: User | { id: string; email: string; name: string; role: 'user' | 'admin' }): string {
+export function generateJwtToken(user: User | { id: string; email: string; name: string; role: 'user' | 'admin' }, sessionId?: string): string {
   const jti = 'at-' + crypto.randomBytes(16).toString('hex');
   const payload: JwtPayload = {
     id: user.id,
     email: user.email,
     name: user.name,
     role: user.role || 'user',
-    jti
+    jti,
+    sessionId
   };
 
   return jwt.sign(payload, config.jwtSecret, {
@@ -113,7 +117,14 @@ export function generateRefreshToken(user: { id: string; email: string }, tokenI
  * Helper to issue both access token and refresh token, saving the refresh token session in storage
  */
 export function generateTokens(user: User | { id: string; email: string; name: string; role: 'user' | 'admin' }): { token: string; refreshToken: string } {
-  const token = generateJwtToken(user);
+  const context = userContextStorage.getStore();
+  const ipAddress = context?.ipAddress || '127.0.0.1';
+  const userAgent = context?.userAgent || 'Chrome / macOS (Current Session)';
+  const isMobile = /mobile|android|iphone|ipad|phone/i.test(userAgent);
+  const deviceType = isMobile ? 'mobile' : 'desktop';
+
+  const sessionId = 'sess-' + crypto.randomBytes(12).toString('hex');
+  const token = generateJwtToken(user, sessionId);
   const tokenId = 'rt-' + crypto.randomBytes(16).toString('hex');
   const refreshToken = generateRefreshToken(user, tokenId);
 
@@ -126,7 +137,82 @@ export function generateTokens(user: User | { id: string; email: string; name: s
     createdAt: new Date().toISOString()
   });
 
+  // Track the active user session in-memory
+  db.userSessions.push({
+    id: sessionId,
+    userId: user.id,
+    token,
+    ipAddress,
+    userAgent,
+    deviceType,
+    createdAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    isActive: true
+  });
+
+  // Track the session in Supabase if configured
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    const sessRow = {
+      id: stringToUUID(sessionId),
+      user_id: stringToUUID(user.id),
+      session_token: token,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      device_type: deviceType,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      last_active_at: new Date().toISOString()
+    };
+    (async () => {
+      try {
+        const { error } = await supabase.from('user_sessions').insert(sessRow);
+        if (error) {
+          console.warn('🔮 [generateTokens] Failed to insert session into Supabase:', error);
+        }
+      } catch (err) {
+        console.warn('🔮 [generateTokens] Error inserting session into Supabase:', err);
+      }
+    })();
+  }
+
   return { token, refreshToken };
+}
+
+/**
+ * Checks if a session has been revoked (either in the local DB or via Supabase if configured)
+ */
+export async function isSessionRevoked(userId: string, sessionId?: string): Promise<boolean> {
+  if (!sessionId) return false;
+
+  // Check in-memory DB first
+  const inMemorySession = db.userSessions.find(s => s.id === sessionId && s.userId === userId);
+  if (inMemorySession) {
+    return !inMemorySession.isActive;
+  }
+
+  // Check Supabase if configured
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('user_sessions')
+        .select('is_active')
+        .eq('id', stringToUUID(sessionId))
+        .eq('user_id', stringToUUID(userId))
+        .maybeSingle();
+      
+      if (error) {
+        console.warn('🔮 [isSessionRevoked] Error checking session from Supabase:', error);
+      } else if (data && data.is_active === false) {
+        return true;
+      }
+    } catch (err) {
+      console.warn('🔮 [isSessionRevoked] Exception checking Supabase session:', err);
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -151,7 +237,7 @@ export function verifyRefreshToken(token: string): RefreshJwtPayload {
  * Middleware that extracts Bearer JWT token from Request header,
  * verifies it, and populates req.user.
  */
-export function authenticateJWT(req: Request, res: Response, next: NextFunction): void {
+export async function authenticateJWT(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization || (req.headers['x-access-token'] as string);
   
   if (!authHeader) {
@@ -170,7 +256,8 @@ export function authenticateJWT(req: Request, res: Response, next: NextFunction)
 
   try {
     const decoded = verifyJwtToken(token);
-    if (isTokenRevoked(token, decoded.jti)) {
+    const isRevoked = isTokenRevoked(token, decoded.jti) || await isSessionRevoked(decoded.id, decoded.sessionId);
+    if (isRevoked) {
       req.user = undefined;
       next();
       return;

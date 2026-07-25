@@ -6,11 +6,15 @@ import { historyRouter } from './history/history.routes';
 import { progressRouter } from './progress/progress.routes';
 import { profileRouter } from './profile/profile.routes';
 import { telemetryRouter } from './telemetry/telemetry.routes';
+import { generalLimiter, authLimiter, llmLimiter } from '../middleware/rateLimit';
 
 export const apiRouter = Router();
 
-apiRouter.use('/auth', authRouter);
-apiRouter.use('/interview', interviewRouter);
+// Apply general rate limit to all /api endpoints
+apiRouter.use(generalLimiter);
+
+apiRouter.use('/auth', authLimiter, authRouter);
+apiRouter.use('/interview', llmLimiter, interviewRouter);
 apiRouter.use('/billing', billingRouter);
 apiRouter.use('/history', historyRouter);
 apiRouter.use('/progress', progressRouter);

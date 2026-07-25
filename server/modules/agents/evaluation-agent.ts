@@ -1,6 +1,7 @@
 import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
+import { PromptService } from '../../services/prompt.service';
 import { 
   EvaluationResult, 
   AnswerEvaluation, 
@@ -164,10 +165,10 @@ export function validateAndNormalizeEvaluationResult(obj: any): {
  * EvaluationAgent grades candidate interview responses against questions and expected topics.
  */
 export class EvaluationAgent {
-  private providerName?: string;
+  private providerName: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName;
+    this.providerName = providerName || 'gemini';
   }
 
   /**
@@ -227,41 +228,13 @@ export class EvaluationAgent {
 
     try {
       const provider = getLLMProvider(this.providerName);
-
-      const systemInstruction = `You are an expert AI Technical Interviewer & Answer Evaluation Agent.
-Your task is to grade candidate interview answers accurately, objectively, and constructively against the question and expected concepts.
-You MUST return ONLY a raw JSON object matching the requested schema.
-Do NOT include markdown formatting, code fences (\`\`\`json), or conversational commentary.`;
-
-      const initialPrompt = `Evaluate the candidate's interview answer based on the question and expected topics.
-
-Question:
-"${questionText.trim()}"
-
-Expected Topics / Concepts:
-${JSON.stringify(expectedTopics)}
-
-Candidate Answer:
-"${candidateAnswer.trim()}"
-
-Return a structured JSON object strictly matching this schema:
-
-{
-  "score": 85,
-  "strengths": ["Key technical strength 1", "Key technical strength 2"],
-  "weaknesses": ["Area that could be improved 1"],
-  "missingConcepts": ["Important topic or concept that was omitted"],
-  "feedback": "Clear, constructive feedback summarizing candidate performance",
-  "idealAnswer": "An exemplary, high-scoring ideal response to this question"
-}
-
-Schema Rules:
-- "score": integer between 0 and 100
-- "strengths": array of strings highlighting strengths in the candidate's answer
-- "weaknesses": array of strings highlighting weaknesses or areas for improvement
-- "missingConcepts": array of strings listing required/expected topics that were missing
-- "feedback": string containing concise, actionable evaluation feedback
-- "idealAnswer": string providing an exemplary ideal answer to the question`;
+      const { data: promptData } = PromptService.getActivePrompt('evaluation-agent');
+      const systemInstruction = promptData.systemInstruction;
+      const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {
+        questionText: questionText.trim(),
+        expectedTopics,
+        candidateAnswer: candidateAnswer.trim()
+      });
 
       let rawOutput: string;
       try {
