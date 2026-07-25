@@ -18,7 +18,7 @@ export class HistoryController {
   });
 
   static getJobDescriptions = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const data = HistoryService.getJobDescriptions();
+    const data = await HistoryService.getJobDescriptions();
     res.json({ success: true, data });
   });
 }

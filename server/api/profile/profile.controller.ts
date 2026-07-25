@@ -4,7 +4,7 @@ import { UnauthorizedError, catchAsync } from '../../middleware/error_handling';
 
 export class ProfileController {
   static getProfile = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const user = ProfileService.getProfile();
+    const user = await ProfileService.getProfile();
     if (!user) {
       throw new UnauthorizedError('User session not found');
     }
@@ -13,7 +13,7 @@ export class ProfileController {
 
   static updateProfile = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { name } = req.body;
-    const user = ProfileService.updateProfile(name);
+    const user = await ProfileService.updateProfile(name);
     res.json({ success: true, data: user });
   });
 }

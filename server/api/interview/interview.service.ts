@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { db, InterviewSession, GeneratedQuestion, Evaluation } from '../../db';
+import { db, InterviewSession, GeneratedQuestion, Evaluation, Resume, JobDescription, stringToUUID } from '../../db';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AuthService } from '../auth/auth.service';
 import { getLLMProvider } from '../../services/llm';
@@ -7,17 +7,8 @@ import { NotFoundError } from '../../middleware/error_handling';
 import { getSupabaseClient } from '../../services/supabase';
 import { defaultEvaluationAgent } from '../../modules/agents/evaluation-agent';
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DEFAULT_USER_UUID = 'a1b2c3d4-0000-0000-0000-000000000001';
-
 export function ensureUUID(id?: string): string {
-  if (id && UUID_REGEX.test(id)) {
-    return id;
-  }
-  if (!id || id === 'usr-anonymous') {
-    return DEFAULT_USER_UUID;
-  }
-  return crypto.randomUUID();
+  return stringToUUID(id);
 }
 
 export class InterviewService {
@@ -39,25 +30,25 @@ export class InterviewService {
     return skills;
   }
 
-  static uploadResume(
+  static async uploadResume(
     text: string, 
     title?: string, 
     fileType?: string, 
     extraData?: { fileName?: string; fileSize?: number; fileUrl?: string }
-  ) {
+  ): Promise<Resume> {
     const user = AuthService.getCurrentUser();
     const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
     const span = tracer.startSpan('resume-agent:parseAndExtract', undefined, undefined, aiAttrs);
     try {
-      const user = AuthService.getCurrentUser();
+      const userId = user?.id || 'usr-anonymous';
       const resumeId = crypto.randomUUID();
       const textLower = text.toLowerCase();
       const skills = InterviewService.extractSkills(text);
       const now = new Date().toISOString();
 
-      const newResume = {
+      const newResume: Resume = {
         id: resumeId,
-        userId: user?.id || 'usr-anonymous',
+        userId,
         title: title || `Resume ${new Date().toLocaleDateString()}`,
         text,
         skills,
@@ -72,30 +63,26 @@ export class InterviewService {
 
       db.resumes.set(resumeId, newResume);
 
-      // Async sync to Supabase if configured
       const supabase = getSupabaseClient();
       if (supabase) {
-        (async () => {
-          try {
-            const { error } = await supabase.from('resumes').insert({
-              id: ensureUUID(newResume.id),
-              user_id: ensureUUID(newResume.userId),
-              title: newResume.title,
-              raw_text: newResume.text,
-              file_type: newResume.fileType,
-              file_name: newResume.fileName,
-              file_size: newResume.fileSize,
-              file_url: newResume.fileUrl,
-              skills: newResume.skills,
-              experience_years: newResume.experienceYears,
-              uploaded_at: newResume.uploadedAt,
-              updated_at: newResume.updatedAt
-            });
-            if (error) console.warn('🔮 [Supabase] Resume insert notice:', error.message);
-          } catch (err) {
-            console.warn('🔮 [Supabase] Resume insert exception:', err);
-          }
-        })();
+        try {
+          await supabase.from('resumes').insert({
+            id: stringToUUID(resumeId),
+            user_id: stringToUUID(userId),
+            title: newResume.title,
+            raw_text: newResume.text,
+            file_type: newResume.fileType,
+            file_name: newResume.fileName,
+            file_size: newResume.fileSize,
+            file_url: newResume.fileUrl,
+            skills: newResume.skills,
+            experience_years: newResume.experienceYears,
+            uploaded_at: newResume.uploadedAt,
+            updated_at: newResume.updatedAt
+          });
+        } catch (err) {
+          console.warn('🔮 [InterviewService] Resume insert error in Supabase:', err);
+        }
       }
 
       span.end('OK', { 'resume.id': resumeId, 'resume.skills_count': skills.length });
@@ -106,7 +93,7 @@ export class InterviewService {
     }
   }
 
-  static updateResume(
+  static async updateResume(
     id: string,
     payload: {
       title?: string;
@@ -116,21 +103,46 @@ export class InterviewService {
       fileSize?: number;
       fileUrl?: string;
     }
-  ) {
+  ): Promise<Resume> {
     const user = AuthService.getCurrentUser();
     const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
     const span = tracer.startSpan('resume-agent:updateResume', undefined, undefined, aiAttrs);
     try {
-      const existing = db.resumes.get(id);
-      const now = new Date().toISOString();
+      let existing = db.resumes.get(id);
+      const supabase = getSupabaseClient();
 
+      if (!existing && supabase) {
+        try {
+          const { data } = await supabase.from('resumes').select('*').eq('id', stringToUUID(id)).maybeSingle();
+          if (data) {
+            existing = {
+              id: data.id,
+              userId: data.user_id,
+              title: data.title,
+              text: data.raw_text,
+              skills: data.skills || [],
+              fileType: data.file_type || 'text',
+              fileName: data.file_name,
+              fileSize: data.file_size,
+              fileUrl: data.file_url,
+              experienceYears: data.experience_years || 0,
+              uploadedAt: data.uploaded_at,
+              updatedAt: data.updated_at
+            };
+          }
+        } catch (e) {
+          console.warn('🔮 [InterviewService] Failed to load resume from Supabase:', e);
+        }
+      }
+
+      const now = new Date().toISOString();
       const text = payload.text !== undefined ? payload.text : (existing?.text || '');
       const title = payload.title !== undefined ? payload.title : (existing?.title || 'Untitled Resume');
       const skills = text ? InterviewService.extractSkills(text) : (existing?.skills || ['Software Engineering']);
 
-      const updatedResume = {
+      const updatedResume: Resume = {
         id,
-        userId: existing?.userId || 'usr-anonymous',
+        userId: existing?.userId || user?.id || 'usr-anonymous',
         title,
         text,
         skills,
@@ -145,29 +157,24 @@ export class InterviewService {
 
       db.resumes.set(id, updatedResume);
 
-      // Async sync to Supabase if configured
-      const supabase = getSupabaseClient();
       if (supabase) {
-        (async () => {
-          try {
-            const { error } = await supabase.from('resumes').upsert({
-              id: ensureUUID(id),
-              user_id: ensureUUID(updatedResume.userId),
-              title: updatedResume.title,
-              raw_text: updatedResume.text,
-              file_type: updatedResume.fileType,
-              file_name: updatedResume.fileName,
-              file_size: updatedResume.fileSize,
-              file_url: updatedResume.fileUrl,
-              skills: updatedResume.skills,
-              experience_years: updatedResume.experienceYears,
-              updated_at: now
-            });
-            if (error) console.warn('🔮 [Supabase] Resume update notice:', error.message);
-          } catch (err) {
-            console.warn('🔮 [Supabase] Resume update exception:', err);
-          }
-        })();
+        try {
+          await supabase.from('resumes').upsert({
+            id: stringToUUID(id),
+            user_id: stringToUUID(updatedResume.userId),
+            title: updatedResume.title,
+            raw_text: updatedResume.text,
+            file_type: updatedResume.fileType,
+            file_name: updatedResume.fileName,
+            file_size: updatedResume.fileSize,
+            file_url: updatedResume.fileUrl,
+            skills: updatedResume.skills,
+            experience_years: updatedResume.experienceYears,
+            updated_at: now
+          });
+        } catch (err) {
+          console.warn('🔮 [InterviewService] Resume update error in Supabase:', err);
+        }
       }
 
       span.end('OK', { 'resume.id': id });
@@ -178,26 +185,45 @@ export class InterviewService {
     }
   }
 
-  static uploadJobDescription(text: string) {
+  static async uploadJobDescription(text: string): Promise<JobDescription> {
     const user = AuthService.getCurrentUser();
     const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
     const span = tracer.startSpan('jd-agent:parseJobDescription', undefined, undefined, aiAttrs);
     try {
-      const user = AuthService.getCurrentUser();
+      const userId = user?.id || 'usr-anonymous';
       const jdId = 'jd-' + Math.random().toString(36).substr(2, 9);
       const title = text.split('\n')[0]?.substring(0, 50) || 'Senior Software Engineer';
+      const company = text.toLowerCase().includes('google') ? 'Google' : 'Target Enterprise';
 
-      const newJD = {
+      const newJD: JobDescription = {
         id: jdId,
-        userId: user?.id || 'usr-anonymous',
+        userId,
         text,
         title,
-        company: text.toLowerCase().includes('google') ? 'Google' : 'Target Enterprise',
+        company,
         requirements: ['TypeScript', 'System Architecture', 'Problem Solving', 'Production Systems'],
         uploadedAt: new Date().toISOString()
       };
 
       db.jobDescriptions.set(jdId, newJD);
+
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase.from('job_descriptions').insert({
+            id: stringToUUID(jdId),
+            user_id: stringToUUID(userId),
+            title: newJD.title,
+            company: newJD.company,
+            raw_text: text,
+            requirements: newJD.requirements,
+            uploaded_at: newJD.uploadedAt
+          });
+        } catch (err) {
+          console.warn('🔮 [InterviewService] Failed to insert job description in Supabase:', err);
+        }
+      }
+
       span.end('OK', { 'jd.id': jdId, 'jd.company': newJD.company });
       return newJD;
     } catch (err: any) {
@@ -233,20 +259,62 @@ export class InterviewService {
     const span = tracer.startSpan('question-agent:generateQuestions', undefined, undefined, aiAttrs);
 
     try {
-      const user = AuthService.getCurrentUser();
-      const resume = db.resumes.get(resumeId);
+      const userId = user?.id || 'usr-anonymous';
+      const supabase = getSupabaseClient();
+
+      let resume = db.resumes.get(resumeId);
+      if (!resume && supabase) {
+        try {
+          const { data } = await supabase.from('resumes').select('*').eq('id', stringToUUID(resumeId)).maybeSingle();
+          if (data) {
+            resume = {
+              id: data.id,
+              userId: data.user_id,
+              title: data.title,
+              text: data.raw_text,
+              skills: data.skills || [],
+              fileType: data.file_type || 'text',
+              experienceYears: data.experience_years || 0,
+              uploadedAt: data.uploaded_at
+            };
+            db.resumes.set(resumeId, resume);
+          }
+        } catch (e) {
+          console.warn('🔮 [InterviewService] Error fetching resume from Supabase:', e);
+        }
+      }
+
       if (!resume) {
         throw new NotFoundError(`Resume with ID '${resumeId}' not found`);
       }
 
-      const jd = jobDescriptionId ? db.jobDescriptions.get(jobDescriptionId) : null;
+      let jd = jobDescriptionId ? db.jobDescriptions.get(jobDescriptionId) : null;
+      if (!jd && jobDescriptionId && supabase) {
+        try {
+          const { data } = await supabase.from('job_descriptions').select('*').eq('id', stringToUUID(jobDescriptionId)).maybeSingle();
+          if (data) {
+            jd = {
+              id: data.id,
+              userId: data.user_id,
+              title: data.title,
+              company: data.company,
+              text: data.raw_text,
+              requirements: data.requirements || [],
+              uploadedAt: data.uploaded_at
+            };
+            db.jobDescriptions.set(jobDescriptionId, jd);
+          }
+        } catch (e) {
+          console.warn('🔮 [InterviewService] Error fetching job description from Supabase:', e);
+        }
+      }
+
       const sessionId = 'ses-' + Math.random().toString(36).substr(2, 9);
       const skills = resume.skills && resume.skills.length > 0 ? resume.skills : ['Software Architecture', 'System Design', 'Core Engineering'];
 
       let questions: GeneratedQuestion[] = [];
       const questionCount = Math.min(Math.max(Number(numberOfQuestions) || 3, 1), 10);
 
-      // Attempt AI Generation via configured LLM Provider (Gemini, OpenAI, or Anthropic)
       try {
         const provider = getLLMProvider();
         const prompt = `You are a Principal Technical Interviewer evaluating a candidate.
@@ -290,26 +358,18 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
             difficulty: (difficulty as any),
             expectedConcepts: Array.isArray(q.expectedConcepts) ? q.expectedConcepts : [skills[idx % skills.length]]
           }));
-        } else {
-          span.addEvent('Validation Failed', { 'llm.attempt': 1, 'reason': 'empty_or_invalid_array' });
         }
       } catch (aiErr) {
         recordMetric.recordLLMRequestFailure({ agent: 'question-agent', 'llm.attempt': 1, error: (aiErr as any)?.message || String(aiErr) });
-        span.addEvent('Validation Failed', { 'llm.attempt': 1, 'reason': 'llm_or_parse_failed' });
-        console.warn('🔮 [InterviewService] LLM provider question generation skipped or failed, using structured template fallback:', aiErr);
+        console.warn('🔮 [InterviewService] LLM provider question generation fallback:', aiErr);
       }
 
-      // Fallback rule-based question generation if LLM was skipped or failed
       if (questions.length === 0) {
         for (let i = 0; i < questionCount; i++) {
           const currentSkill = skills[i % skills.length];
-
           let qType: 'technical' | 'behavioral' | 'situational' | 'background' = 'technical';
-          if (interviewType === 'behavioral') {
-            qType = 'behavioral';
-          } else if (interviewType === 'mixed') {
-            qType = i % 2 === 0 ? 'technical' : 'behavioral';
-          }
+          if (interviewType === 'behavioral') qType = 'behavioral';
+          else if (interviewType === 'mixed') qType = i % 2 === 0 ? 'technical' : 'behavioral';
 
           let qText = '';
           let concepts: string[] = [];
@@ -355,9 +415,10 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
         difficulty: difficulty as any
       };
 
+      const now = new Date().toISOString();
       const newSession: InterviewSession = {
         id: sessionId,
-        userId: user?.id || 'usr-anonymous',
+        userId,
         resumeId,
         resumeTitle: resume.title || 'Uploaded Resume',
         jobDescriptionId: jobDescriptionId || null,
@@ -367,10 +428,44 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
         questions,
         answers: {},
         evaluations: {},
-        createdAt: new Date().toISOString()
+        createdAt: now
       };
 
       db.sessions.set(sessionId, newSession);
+
+      if (supabase) {
+        try {
+          await supabase.from('interview_sessions').insert({
+            id: stringToUUID(sessionId),
+            user_id: stringToUUID(userId),
+            resume_id: stringToUUID(resumeId),
+            resume_title: newSession.resumeTitle,
+            job_description_id: jobDescriptionId ? stringToUUID(jobDescriptionId) : null,
+            job_title: newSession.jobTitle,
+            status: 'in_progress',
+            options: newSession.options,
+            created_at: now,
+            updated_at: now
+          });
+
+          for (let i = 0; i < questions.length; i++) {
+            const q = questions[i];
+            await supabase.from('generated_questions').insert({
+              id: stringToUUID(sessionId + '-' + q.id),
+              session_id: stringToUUID(sessionId),
+              question_text: q.questionText,
+              type: q.type,
+              topic: q.topic,
+              difficulty: q.difficulty,
+              expected_concepts: q.expectedConcepts,
+              order_index: i
+            });
+          }
+        } catch (e) {
+          console.warn('🔮 [InterviewService] Failed to insert session and questions in Supabase:', e);
+        }
+      }
+
       recordMetric.recordInterviewStarted({ 'interview.type': interviewType, difficulty });
       recordMetric.recordQuestionsGenerated(questions.length, { 'interview.type': interviewType, difficulty });
       span.end('OK', { 'session.id': sessionId, 'questions.count': questions.length, 'has_jd': !!jd });
@@ -391,8 +486,14 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
     const span = tracer.startSpan('evaluation-agent:evaluateAnswer', undefined, undefined, aiAttrs);
 
     try {
-      const user = AuthService.getCurrentUser();
-      const session = db.sessions.get(sessionId);
+      const userId = user?.id || 'usr-anonymous';
+      const supabase = getSupabaseClient();
+
+      let session = db.sessions.get(sessionId);
+      if (!session && supabase) {
+        session = (await InterviewService.getSessionById(sessionId)) || undefined;
+      }
+
       if (!session) {
         throw new NotFoundError(`Session with ID '${sessionId}' not found`);
       }
@@ -410,7 +511,6 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
       let missingPoints = ['Tracing context propagation across services', 'Resource-bound backpressure handles'];
       let suggestedAnswer = `To enhance this answer, elaborate on telemetry metadata spans and explicit error boundary resilience mechanisms.`;
 
-      // Attempt AI Evaluation via EvaluationAgent
       try {
         const evalResult = await defaultEvaluationAgent.evaluateAnswer(
           question.questionText || question.topic,
@@ -427,8 +527,9 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
         console.warn('🔮 [InterviewService] EvaluationAgent call failed, using baseline evaluator:', aiErr);
       }
 
+      const evalId = 'ev-' + Math.random().toString(36).substr(2, 9);
       const evaluation: Evaluation = {
-        id: 'ev-' + Math.random().toString(36).substr(2, 9),
+        id: evalId,
         questionId,
         score,
         clarityRating,
@@ -440,6 +541,35 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
 
       session.evaluations[questionId] = evaluation;
       recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': score });
+
+      const now = new Date().toISOString();
+
+      if (supabase) {
+        try {
+          await supabase.from('answers').upsert({
+            id: stringToUUID(sessionId + '-ans-' + questionId),
+            question_id: stringToUUID(sessionId + '-' + questionId),
+            session_id: stringToUUID(sessionId),
+            user_id: stringToUUID(userId),
+            answer_text: answerText,
+            submitted_at: now
+          });
+
+          await supabase.from('evaluations').upsert({
+            id: stringToUUID(evalId),
+            question_id: stringToUUID(sessionId + '-' + questionId),
+            session_id: stringToUUID(sessionId),
+            score: evaluation.score,
+            clarity_rating: evaluation.clarityRating,
+            feedback: evaluation.feedback,
+            missing_points: evaluation.missingPoints,
+            suggested_answer: evaluation.suggestedAnswer,
+            evaluated_at: evaluation.evaluatedAt
+          });
+        } catch (e) {
+          console.warn('🔮 [InterviewService] Failed to record answer/evaluation in Supabase:', e);
+        }
+      }
 
       const allAnswered = session.questions.every(q => session.answers[q.id]);
       if (allAnswered) {
@@ -457,16 +587,34 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
           summary: `Excellent overall performance. You demonstrate a robust grasp of production engineering principles and architectural boundaries.`
         };
 
-        const userId = user?.id || 'usr-anonymous';
+        if (supabase) {
+          try {
+            await supabase.from('interview_sessions').update({
+              status: 'completed',
+              overall_score: session.coachingReport.overallScore,
+              coaching_summary: session.coachingReport.summary,
+              coaching_report: session.coachingReport,
+              updated_at: now
+            }).eq('id', stringToUUID(sessionId));
+          } catch (e) {
+            console.warn('🔮 [InterviewService] Failed to complete session in Supabase:', e);
+          }
+        }
+
         const userProgress = db.progress.get(userId) || [];
 
-        session.questions.forEach(q => {
-          const existingTopic = userProgress.find(p => p.topic === q.topic);
+        for (const q of session.questions) {
           const evalScore = session.evaluations[q.id]?.score || 80;
+          const existingTopic = userProgress.find(p => p.topic === q.topic);
+          let newCount = 1;
+          let newConf = evalScore;
+
           if (existingTopic) {
             existingTopic.sessionCount += 1;
             existingTopic.confidenceScore = Math.round((existingTopic.confidenceScore + evalScore) / 2);
-            existingTopic.lastPracticedAt = new Date().toISOString();
+            existingTopic.lastPracticedAt = now;
+            newCount = existingTopic.sessionCount;
+            newConf = existingTopic.confidenceScore;
           } else {
             userProgress.push({
               id: 'prog-' + Math.random().toString(36).substr(2, 9),
@@ -474,10 +622,25 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
               topic: q.topic,
               confidenceScore: evalScore,
               sessionCount: 1,
-              lastPracticedAt: new Date().toISOString()
+              lastPracticedAt: now
             });
           }
-        });
+
+          if (supabase) {
+            try {
+              await supabase.from('learning_progress').upsert({
+                user_id: stringToUUID(userId),
+                topic: q.topic,
+                confidence_score: newConf,
+                session_count: newCount,
+                last_practiced_at: now,
+                updated_at: now
+              }, { onConflict: 'user_id,topic' });
+            } catch (e) {
+              console.warn('🔮 [InterviewService] Failed to update learning_progress in Supabase:', e);
+            }
+          }
+        }
         db.progress.set(userId, userProgress);
       }
 
@@ -491,13 +654,129 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
     }
   }
 
-  static getHistory() {
+  static async getHistory(): Promise<InterviewSession[]> {
     const user = AuthService.getCurrentUser();
     const userId = user?.id || 'usr-anonymous';
-    return Array.from(db.sessions.values()).filter(s => s.userId === userId);
+    const userUuid = stringToUUID(userId);
+    const anonUuid = stringToUUID('usr-anonymous');
+    const supabase = getSupabaseClient();
+
+    if (supabase) {
+      try {
+        const { data: sessionRows } = await supabase
+          .from('interview_sessions')
+          .select('*')
+          .or(`user_id.eq.${userUuid},user_id.eq.${anonUuid}`)
+          .order('created_at', { ascending: false });
+
+        if (Array.isArray(sessionRows) && sessionRows.length > 0) {
+          const sessions: InterviewSession[] = [];
+          for (const sRow of sessionRows) {
+            const sess = await InterviewService.getSessionById(sRow.id);
+            if (sess) {
+              sessions.push(sess);
+            }
+          }
+          return sessions;
+        }
+      } catch (e) {
+        console.warn('🔮 [InterviewService] Failed to fetch session history from Supabase:', e);
+      }
+    }
+
+    return Array.from(db.sessions.values()).filter(s => s.userId === userId || s.userId === 'usr-anonymous');
   }
 
-  static getSessionById(id: string) {
-    return db.sessions.get(id);
+  static async getSessionById(id: string): Promise<InterviewSession | null> {
+    const sessionUuid = stringToUUID(id);
+    const supabase = getSupabaseClient();
+
+    if (supabase) {
+      try {
+        const { data: sRow } = await supabase
+          .from('interview_sessions')
+          .select('*')
+          .eq('id', sessionUuid)
+          .maybeSingle();
+
+        if (sRow) {
+          const { data: qRows } = await supabase
+            .from('generated_questions')
+            .select('*')
+            .eq('session_id', sessionUuid)
+            .order('order_index', { ascending: true });
+
+          const { data: aRows } = await supabase
+            .from('answers')
+            .select('*')
+            .eq('session_id', sessionUuid);
+
+          const { data: eRows } = await supabase
+            .from('evaluations')
+            .select('*')
+            .eq('session_id', sessionUuid);
+
+          const questions: GeneratedQuestion[] = Array.isArray(qRows) ? qRows.map((q, idx) => ({
+            id: `q-${idx + 1}`,
+            questionText: q.question_text,
+            type: q.type,
+            topic: q.topic,
+            difficulty: q.difficulty,
+            expectedConcepts: q.expected_concepts || []
+          })) : [];
+
+          const answers: Record<string, string> = {};
+          if (Array.isArray(aRows)) {
+            aRows.forEach(a => {
+              // Extract question id suffix or map by matching question
+              const qIdx = questions.findIndex(q => stringToUUID(id + '-' + q.id) === a.question_id);
+              const qKey = qIdx !== -1 ? `q-${qIdx + 1}` : a.question_id;
+              answers[qKey] = a.answer_text;
+            });
+          }
+
+          const evaluations: Record<string, Evaluation> = {};
+          if (Array.isArray(eRows)) {
+            eRows.forEach(e => {
+              const qIdx = questions.findIndex(q => stringToUUID(id + '-' + q.id) === e.question_id);
+              const qKey = qIdx !== -1 ? `q-${qIdx + 1}` : e.question_id;
+              evaluations[qKey] = {
+                id: e.id,
+                questionId: qKey,
+                score: e.score,
+                clarityRating: e.clarity_rating,
+                feedback: e.feedback,
+                missingPoints: e.missing_points || [],
+                suggestedAnswer: e.suggested_answer,
+                evaluatedAt: e.evaluated_at
+              };
+            });
+          }
+
+          const session: InterviewSession = {
+            id,
+            userId: sRow.user_id,
+            resumeId: sRow.resume_id || '',
+            resumeTitle: sRow.resume_title || 'Uploaded Resume',
+            jobDescriptionId: sRow.job_description_id || null,
+            jobTitle: sRow.job_title || 'Resume-based Interview',
+            status: sRow.status || 'in_progress',
+            options: sRow.options,
+            questions,
+            answers,
+            evaluations,
+            coachingReport: sRow.coaching_report,
+            createdAt: sRow.created_at
+          };
+
+          db.sessions.set(id, session);
+          return session;
+        }
+      } catch (e) {
+        console.warn('🔮 [InterviewService] Failed to load session by ID from Supabase:', e);
+      }
+    }
+
+    return db.sessions.get(id) || null;
   }
 }

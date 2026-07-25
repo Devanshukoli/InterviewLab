@@ -1,3 +1,17 @@
+import crypto from 'crypto';
+
+export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const DEFAULT_USER_UUID = 'a1b2c3d4-0000-0000-0000-000000000001';
+
+export function stringToUUID(str?: string | null): string {
+  if (!str) return DEFAULT_USER_UUID;
+  if (UUID_REGEX.test(str)) return str;
+  if (str === 'usr-anonymous' || str === 'usr-default') return DEFAULT_USER_UUID;
+
+  const hash = crypto.createHash('md5').update(str).digest('hex');
+  return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-${hash.substring(12, 16)}-${hash.substring(16, 20)}-${hash.substring(20, 32)}`;
+}
+
 // Database Models and In-Memory Repository Scaffolding
 
 export interface User {

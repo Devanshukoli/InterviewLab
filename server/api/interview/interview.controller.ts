@@ -28,7 +28,7 @@ export class InterviewController {
     if (!text || typeof text !== 'string' || !text.trim()) {
       throw new BadRequestError('Resume text content is required');
     }
-    const data = InterviewService.uploadResume(text, title, fileType);
+    const data = await InterviewService.uploadResume(text, title, fileType);
     res.json({ success: true, data });
   });
 
@@ -44,7 +44,7 @@ export class InterviewController {
 
     const extractedText = extractTextFromBuffer(file.buffer, file.mimetype, file.originalname);
 
-    const data = InterviewService.uploadResume(
+    const data = await InterviewService.uploadResume(
       extractedText,
       title,
       fileType,
@@ -91,7 +91,7 @@ export class InterviewController {
       payload = { title, text, fileType };
     }
 
-    const data = InterviewService.updateResume(id, payload);
+    const data = await InterviewService.updateResume(id, payload);
     res.json({ success: true, data });
   });
 
@@ -100,7 +100,7 @@ export class InterviewController {
     if (!text || typeof text !== 'string' || !text.trim()) {
       throw new BadRequestError('Job description text content is required');
     }
-    const data = InterviewService.uploadJobDescription(text);
+    const data = await InterviewService.uploadJobDescription(text);
     res.json({ success: true, data });
   });
 
@@ -123,13 +123,13 @@ export class InterviewController {
   });
 
   static getHistory = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const data = InterviewService.getHistory();
+    const data = await InterviewService.getHistory();
     res.json({ success: true, data });
   });
 
   static getSession = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
-    const data = InterviewService.getSessionById(id);
+    const data = await InterviewService.getSessionById(id);
     if (!data) {
       throw new NotFoundError(`Interview session with ID '${id}' not found`);
     }

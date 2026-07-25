@@ -11,6 +11,7 @@ authRouter.post('/google', AuthController.google);
 authRouter.get('/me', AuthController.me);
 authRouter.get('/logins', AuthController.logins);
 authRouter.post('/change-password', AuthController.changePassword);
+authRouter.post('/reset-password', AuthController.resetPassword);
 authRouter.post('/2fa/setup', AuthController.setup2FA);
 authRouter.post('/2fa/verify', AuthController.verify2FA);
 authRouter.post('/2fa/login-verify', AuthController.verifyLogin2FA);

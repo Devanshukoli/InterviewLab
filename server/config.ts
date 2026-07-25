@@ -14,7 +14,7 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().optional().default(''),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
-  JWT_SECRET: z.string().default('super-secret-interviewops-key-2026'),
+  JWT_SECRET: z.string().min(1, 'JWT_SECRET environment variable is required'),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional().default('http://localhost:4318'),
   OTEL_SERVICE_NAME: z.string().default('interviewops-api'),
 });

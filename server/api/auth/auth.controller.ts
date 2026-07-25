@@ -424,7 +424,7 @@ export class AuthController {
   static logins = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const user = req.user || AuthService.getCurrentUser();
     const userId = user?.id || 'usr-default';
-    const data = AuthService.getLogins(userId);
+    const data = await AuthService.getLogins(userId);
     res.json({ success: true, data });
   });
 
@@ -434,6 +434,15 @@ export class AuthController {
     const { currentPassword, newPassword } = req.body;
     await AuthService.changePassword(userId, currentPassword, newPassword);
     res.json({ success: true, message: 'Password updated successfully' });
+  });
+
+  static resetPassword = catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const { email, newPassword } = req.body;
+    if (!email || !newPassword) {
+      throw new BadRequestError('Email and new password are required');
+    }
+    await AuthService.resetPassword(email, newPassword);
+    res.json({ success: true, message: 'Password reset successfully. You can now log in with your new password.' });
   });
 
   static setup2FA = catchAsync(async (req: Request, res: Response): Promise<void> => {
@@ -479,7 +488,7 @@ export class AuthController {
     const user = req.user || AuthService.getCurrentUser();
     const userId = user?.id || 'usr-default';
     const token = req.headers.authorization?.replace('Bearer ', '');
-    const data = AuthService.getActiveSessions(userId, token);
+    const data = await AuthService.getActiveSessions(userId, token);
     res.json({ success: true, data });
   });
 
@@ -487,7 +496,7 @@ export class AuthController {
     const user = req.user || AuthService.getCurrentUser();
     const userId = user?.id || 'usr-default';
     const { sessionId } = req.params;
-    AuthService.revokeSession(userId, sessionId);
+    await AuthService.revokeSession(userId, sessionId);
     res.json({ success: true, message: 'Session revoked successfully' });
   });
 }

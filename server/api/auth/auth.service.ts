@@ -1,5 +1,5 @@
-import { db, User, UserLogin, UserSession } from '../../db';
-import { encryptPassword, hashPassword, verifyPassword } from './utils/crypto';
+import { db, User, UserLogin, UserSession, stringToUUID } from '../../db';
+import { hashPassword, verifyPassword } from './utils/crypto';
 import { generateJwtToken } from '../../middleware/jwt.middleware';
 import { getSupabaseClient } from '../../services/supabase';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../middleware/error_handling';
@@ -24,6 +24,9 @@ export class AuthService {
 
   static setCurrentUser(user: User | null): void {
     currentUserSession = user;
+    if (user) {
+      db.users.set(user.email, user);
+    }
   }
 
   static createMfaSession(user: User): { requires2FA: true; mfaToken: string; email: string } {
@@ -49,7 +52,29 @@ export class AuthService {
       throw new UnauthorizedError('2FA session expired. Please sign in again.');
     }
 
-    const user = db.users.get(mfaSession.email);
+    let user = db.users.get(mfaSession.email);
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('email', mfaSession.email).maybeSingle();
+        if (data) {
+          user = {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || '',
+            name: data.name,
+            role: data.role || 'user',
+            twoFactorEnabled: data.two_factor_enabled || false,
+            twoFactorSecret: data.two_factor_secret || undefined,
+            backupCodes: data.backup_codes || []
+          };
+          db.users.set(mfaSession.email, user);
+        }
+      } catch (err) {
+        console.warn('🔮 [AuthService] Failed to load user profile during 2FA:', err);
+      }
+    }
+
     if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
       throw new BadRequestError('2FA is not enabled on this account.');
     }
@@ -57,7 +82,7 @@ export class AuthService {
     const cleanCode = code.trim().replace(/\s+/g, '');
     let isValid = TotpService.verifyToken(cleanCode, user.twoFactorSecret);
 
-    // If TOTP verification failed, check if candidate code matches one of the user's single-use backup codes
+    // Check backup codes
     if (!isValid && user.backupCodes && user.backupCodes.length > 0) {
       const formattedCode = cleanCode.includes('-')
         ? cleanCode.toLowerCase()
@@ -69,18 +94,16 @@ export class AuthService {
 
       if (backupIndex !== -1) {
         isValid = true;
-        // Consume the backup code
         user.backupCodes.splice(backupIndex, 1);
-        try {
-          const supabase = getSupabaseClient();
-          if (supabase) {
+        if (supabase) {
+          try {
             await supabase
               .from('profiles')
               .update({ backup_codes: user.backupCodes })
               .eq('email', user.email);
+          } catch (e) {
+            console.warn('🔮 [AuthService] Failed to update backup codes:', e);
           }
-        } catch (e) {
-          // Continue
         }
       }
     }
@@ -92,31 +115,47 @@ export class AuthService {
     pendingMfaSessions.delete(mfaToken);
     currentUserSession = user;
 
-    db.userLogins.unshift({
-      id: 'log-' + Math.random().toString(36).substr(2, 9),
-      userId: user.id,
-      loginProvider: '2fa',
-      status: 'success',
-      loggedInAt: new Date().toISOString()
-    });
+    // Log in Supabase
+    if (supabase) {
+      try {
+        await supabase.from('user_logins').insert({
+          id: stringToUUID('log-' + Date.now() + '-' + user.id),
+          user_id: stringToUUID(user.id),
+          login_provider: '2fa',
+          status: 'success',
+          logged_in_at: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to record login:', e);
+      }
+    }
 
     const token = generateJwtToken(user);
     return { user, token };
   }
 
   static async register(email: string, name: string, plainPassword: string): Promise<{ user: User; token: string }> {
-    if (db.users.has(email)) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data: existing } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        if (existing) {
+          throw new ConflictError('User already exists');
+        }
+      } catch (err: any) {
+        if (err instanceof ConflictError) throw err;
+      }
+    } else if (db.users.has(email)) {
       throw new ConflictError('User already exists');
     }
 
-    // Encrypt password securely using AES-256-GCM / PBKDF2 crypto util
-    const encryptedPass = encryptPassword(plainPassword);
     const passHash = hashPassword(plainPassword);
+    const userId = stringToUUID('usr-' + email);
 
     const newUser: User = {
-      id: 'usr-' + Math.random().toString(36).substr(2, 9),
+      id: userId,
       email,
-      passwordHash: encryptedPass, // Store encrypted password
+      passwordHash: passHash,
       name,
       role: 'user'
     };
@@ -124,158 +163,152 @@ export class AuthService {
     db.users.set(email, newUser);
     currentUserSession = newUser;
 
-    // Persist to Supabase if client is active
-    try {
-      const supabase = getSupabaseClient();
-      if (supabase) {
+    if (supabase) {
+      try {
         await supabase.from('profiles').insert([{
+          id: userId,
           email,
-          password_hash: encryptedPass,
+          password_hash: passHash,
           name,
           role: 'user'
         }]);
-        console.log('⚡ [AuthService] Registered user persisted to Supabase profiles.');
+        await supabase.from('user_logins').insert([{
+          id: stringToUUID('log-' + Date.now() + '-' + email),
+          user_id: userId,
+          login_provider: 'email',
+          status: 'success'
+        }]);
+      } catch (sbErr) {
+        console.warn('⚠️ [AuthService] Supabase profile insert error:', sbErr);
       }
-    } catch (sbErr) {
-      console.warn('⚠️ [AuthService] Supabase sync skipped:', sbErr);
     }
 
-    // Record login audit log
-    const loginRecord: UserLogin = {
-      id: 'log-' + Math.random().toString(36).substr(2, 9),
-      userId: newUser.id,
-      loginProvider: 'email',
-      status: 'success',
-      loggedInAt: new Date().toISOString()
-    };
-    db.userLogins.unshift(loginRecord);
-
-    // Generate real signed JWT token
     const token = generateJwtToken(newUser);
-
-    return {
-      user: newUser,
-      token
-    };
+    return { user: newUser, token };
   }
 
   static async login(email: string, plainPassword: string): Promise<{ user?: User; token?: string; requires2FA?: boolean; mfaToken?: string; email?: string }> {
-    let user = db.users.get(email);
+    let user: User | undefined;
+    const supabase = getSupabaseClient();
 
-    // If not in local db, attempt to lookup in Supabase
-    if (!user) {
+    if (supabase) {
       try {
-        const supabase = getSupabaseClient();
-        if (supabase) {
-          const { data } = await supabase.from('profiles').select('*').eq('email', email).single();
-          if (data) {
-            user = {
-              id: data.id || 'usr-' + Math.random().toString(36).substr(2, 9),
-              email: data.email,
-              passwordHash: data.password_hash || encryptPassword(plainPassword),
-              name: data.name,
-              role: data.role || 'user',
-              twoFactorEnabled: data.two_factor_enabled || false,
-              twoFactorSecret: data.two_factor_secret || undefined,
-              backupCodes: data.backup_codes || []
-            };
-            db.users.set(email, user);
-          }
+        const { data } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        if (data) {
+          user = {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || '',
+            name: data.name,
+            role: data.role || 'user',
+            twoFactorEnabled: data.two_factor_enabled || false,
+            twoFactorSecret: data.two_factor_secret || undefined,
+            backupCodes: data.backup_codes || []
+          };
+          db.users.set(email, user);
         }
       } catch (sbErr) {
-        console.warn('⚠️ [AuthService] Supabase profile fetch skipped:', sbErr);
+        console.warn('⚠️ [AuthService] Supabase profile fetch failed:', sbErr);
       }
     }
 
+    if (!user) {
+      user = db.users.get(email);
+    }
+
     if (user) {
-      // Verify candidate password using crypto utility
+      if (user.passwordHash && user.passwordHash.startsWith('enc:')) {
+        throw new UnauthorizedError('Password reset required: Your account password uses a deprecated encryption format. Please reset your password to update to secure password hashing.');
+      }
       const isValid = verifyPassword(plainPassword, user.passwordHash);
       if (!isValid) {
         throw new UnauthorizedError('Invalid credentials');
       }
     } else {
-      // Auto-provision user for first-time login
-      const encryptedPass = encryptPassword(plainPassword);
+      // Auto-provision
+      const passHash = hashPassword(plainPassword);
       const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      const userId = stringToUUID('usr-' + email);
       user = {
-        id: 'usr-' + Math.random().toString(36).substr(2, 9),
+        id: userId,
         email,
-        passwordHash: encryptedPass,
+        passwordHash: passHash,
         name: name || 'Engineer',
         role: 'user'
       };
       db.users.set(email, user);
 
-      // Persist to Supabase
-      try {
-        const supabase = getSupabaseClient();
-        if (supabase) {
+      if (supabase) {
+        try {
           await supabase.from('profiles').insert([{
+            id: userId,
             email,
-            password_hash: encryptedPass,
+            password_hash: passHash,
             name: user.name,
             role: 'user'
           }]);
+        } catch (e) {
+          console.warn('🔮 [AuthService] Failed to auto-provision profile in Supabase:', e);
         }
-      } catch (e) {
-        // Continue
       }
     }
 
-    // Check if 2FA is enabled on user's account
     if (user.twoFactorEnabled && user.twoFactorSecret) {
       return AuthService.createMfaSession(user);
     }
 
     currentUserSession = user;
 
-    // Record login entry
-    db.userLogins.unshift({
-      id: 'log-' + Math.random().toString(36).substr(2, 9),
-      userId: user.id,
-      loginProvider: 'email',
-      status: 'success',
-      loggedInAt: new Date().toISOString()
-    });
+    if (supabase) {
+      try {
+        await supabase.from('user_logins').insert([{
+          id: stringToUUID('log-' + Date.now() + '-' + email),
+          user_id: stringToUUID(user.id),
+          login_provider: 'email',
+          status: 'success'
+        }]);
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to log user login in Supabase:', e);
+      }
+    }
 
     const token = generateJwtToken(user);
-
-    return {
-      user,
-      token
-    };
+    return { user, token };
   }
 
   static async googleLogin(email: string, name: string): Promise<{ user?: User; token?: string; requires2FA?: boolean; mfaToken?: string; email?: string }> {
-    let user = db.users.get(email);
+    let user: User | undefined;
+    const supabase = getSupabaseClient();
 
-    if (!user) {
+    if (supabase) {
       try {
-        const supabase = getSupabaseClient();
-        if (supabase) {
-          const { data } = await supabase.from('profiles').select('*').eq('email', email).single();
-          if (data) {
-            user = {
-              id: data.id || 'usr-google-' + Math.random().toString(36).substr(2, 7),
-              email: data.email,
-              passwordHash: data.password_hash || '',
-              name: data.name || name,
-              role: data.role || 'user',
-              twoFactorEnabled: data.two_factor_enabled || false,
-              twoFactorSecret: data.two_factor_secret || undefined,
-              backupCodes: data.backup_codes || []
-            };
-            db.users.set(email, user);
-          }
+        const { data } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        if (data) {
+          user = {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || '',
+            name: data.name || name,
+            role: data.role || 'user',
+            twoFactorEnabled: data.two_factor_enabled || false,
+            twoFactorSecret: data.two_factor_secret || undefined,
+            backupCodes: data.backup_codes || []
+          };
+          db.users.set(email, user);
         }
       } catch (e) {
-        // Continue
+        console.warn('🔮 [AuthService] Failed to fetch google profile from Supabase:', e);
       }
     }
 
     if (!user) {
+      user = db.users.get(email);
+    }
+
+    if (!user) {
+      const userId = stringToUUID('usr-google-' + email);
       user = {
-        id: 'usr-google-' + Math.random().toString(36).substr(2, 7),
+        id: userId,
         email,
         passwordHash: '',
         name,
@@ -283,59 +316,103 @@ export class AuthService {
       };
       db.users.set(email, user);
 
-      try {
-        const supabase = getSupabaseClient();
-        if (supabase) {
+      if (supabase) {
+        try {
           await supabase.from('profiles').insert([{
+            id: userId,
             email,
             password_hash: '',
             name,
             role: 'user'
           }]);
+        } catch (e) {
+          console.warn('🔮 [AuthService] Failed to insert google user in Supabase:', e);
         }
-      } catch (e) {
-        // Ignore optional Supabase insertion errors
       }
     }
 
-    // Check if 2FA is enabled on user's account
     if (user.twoFactorEnabled && user.twoFactorSecret) {
       return AuthService.createMfaSession(user);
     }
 
     currentUserSession = user;
 
-    db.userLogins.unshift({
-      id: 'log-' + Math.random().toString(36).substr(2, 9),
-      userId: user.id,
-      loginProvider: 'google',
-      status: 'success',
-      loggedInAt: new Date().toISOString()
-    });
+    if (supabase) {
+      try {
+        await supabase.from('user_logins').insert([{
+          id: stringToUUID('log-' + Date.now() + '-' + email),
+          user_id: stringToUUID(user.id),
+          login_provider: 'google',
+          status: 'success'
+        }]);
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to record google login in Supabase:', e);
+      }
+    }
 
     const token = generateJwtToken(user);
-
-    return {
-      user,
-      token
-    };
+    return { user, token };
   }
 
-  static getLogins(userId: string): UserLogin[] {
+  static async getLogins(userId: string): Promise<UserLogin[]> {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('user_logins')
+          .select('*')
+          .eq('user_id', stringToUUID(userId))
+          .order('logged_in_at', { ascending: false });
+
+        if (Array.isArray(data)) {
+          return data.map(l => ({
+            id: l.id,
+            userId: l.user_id,
+            ipAddress: l.ip_address,
+            userAgent: l.user_agent,
+            loginProvider: l.login_provider,
+            status: l.status,
+            loggedInAt: l.logged_in_at
+          }));
+        }
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to fetch logins from Supabase:', e);
+      }
+    }
     return db.userLogins.filter(l => l.userId === userId);
   }
 
-  // 1. Password Change
   static async changePassword(userId: string, currentPass: string, newPass: string): Promise<void> {
     if (!newPass || newPass.length < 8) {
       throw new BadRequestError('New password must be at least 8 characters long');
     }
 
+    const supabase = getSupabaseClient();
     let userObj: User | undefined;
-    for (const u of db.users.values()) {
-      if (u.id === userId) {
-        userObj = u;
-        break;
+
+    if (supabase) {
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle();
+        if (data) {
+          userObj = {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || '',
+            name: data.name,
+            role: data.role || 'user'
+          };
+        }
+      } catch (e) {
+        console.warn('🔮 [AuthService] Error fetching profile for password change:', e);
+      }
+    }
+
+    if (!userObj) {
+      for (const u of db.users.values()) {
+        if (u.id === userId) {
+          userObj = u;
+          break;
+        }
       }
     }
 
@@ -344,38 +421,109 @@ export class AuthService {
     }
 
     if (userObj.passwordHash) {
+      if (userObj.passwordHash.startsWith('enc:')) {
+        throw new BadRequestError('Your account uses a deprecated password storage format. Please reset your password to update your credentials.');
+      }
       const isValid = verifyPassword(currentPass, userObj.passwordHash);
       if (!isValid) {
         throw new BadRequestError('Current password is incorrect');
       }
     }
 
-    const newEncrypted = encryptPassword(newPass);
-    userObj.passwordHash = newEncrypted;
+    const newHash = hashPassword(newPass);
+    userObj.passwordHash = newHash;
+    db.users.set(userObj.email, userObj);
 
-    try {
-      const supabase = getSupabaseClient();
-      if (supabase) {
+    if (supabase) {
+      try {
         await supabase
           .from('profiles')
           .update({
-            password_hash: newEncrypted,
+            password_hash: newHash,
             last_password_change: new Date().toISOString()
           })
-          .eq('email', userObj.email);
+          .eq('id', stringToUUID(userId));
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to update password in Supabase:', e);
       }
-    } catch (e) {
-      // Continue
     }
   }
 
-  // 2. Setup 2FA
+  static async resetPassword(email: string, newPass: string): Promise<void> {
+    if (!newPass || newPass.length < 8) {
+      throw new BadRequestError('New password must be at least 8 characters long');
+    }
+
+    const supabase = getSupabaseClient();
+    let user = db.users.get(email);
+
+    if (supabase) {
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        if (data) {
+          user = {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || '',
+            name: data.name,
+            role: data.role || 'user'
+          };
+        }
+      } catch (e) {
+        console.warn('🔮 [AuthService] Error checking profile for reset password:', e);
+      }
+    }
+
+    if (!user) {
+      throw new BadRequestError('Account not found with provided email address');
+    }
+
+    const newHash = hashPassword(newPass);
+    user.passwordHash = newHash;
+    db.users.set(email, user);
+
+    if (supabase) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({
+            password_hash: newHash,
+            last_password_change: new Date().toISOString()
+          })
+          .eq('email', email);
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to reset password in Supabase:', e);
+      }
+    }
+  }
+
   static async setup2FA(userId: string): Promise<{ secret: string; uri: string }> {
-    let userObj: User | undefined;
-    for (const u of db.users.values()) {
-      if (u.id === userId) {
-        userObj = u;
-        break;
+    let userObj: User | undefined = currentUserSession?.id === userId ? currentUserSession : undefined;
+    const supabase = getSupabaseClient();
+
+    if (!userObj && supabase) {
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle();
+        if (data) {
+          userObj = {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || '',
+            name: data.name,
+            role: data.role || 'user'
+          };
+        }
+      } catch (e) {
+        console.warn('🔮 [AuthService] Error loading user for 2FA setup:', e);
+      }
+    }
+
+    if (!userObj) {
+      for (const u of db.users.values()) {
+        if (u.id === userId) {
+          userObj = u;
+          break;
+        }
       }
     }
 
@@ -385,19 +533,20 @@ export class AuthService {
 
     const secret = TotpService.generateSecret(16);
     userObj.pendingTwoFactorSecret = secret;
+    db.users.set(userObj.email, userObj);
 
     const uri = TotpService.getOtpAuthUri(secret, userObj.email, 'InterviewOps');
-
     return { secret, uri };
   }
 
-  // 3. Verify & Enable 2FA
   static async verifyAndEnable2FA(userId: string, code: string): Promise<{ user: User; backupCodes: string[] }> {
-    let userObj: User | undefined;
-    for (const u of db.users.values()) {
-      if (u.id === userId) {
-        userObj = u;
-        break;
+    let userObj: User | undefined = currentUserSession?.id === userId ? currentUserSession : undefined;
+    if (!userObj) {
+      for (const u of db.users.values()) {
+        if (u.id === userId) {
+          userObj = u;
+          break;
+        }
       }
     }
 
@@ -416,10 +565,11 @@ export class AuthService {
 
     const backupCodes = TotpService.generateBackupCodes(8);
     userObj.backupCodes = backupCodes;
+    db.users.set(userObj.email, userObj);
 
-    try {
-      const supabase = getSupabaseClient();
-      if (supabase) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
         await supabase
           .from('profiles')
           .update({
@@ -427,22 +577,23 @@ export class AuthService {
             two_factor_secret: userObj.twoFactorSecret,
             backup_codes: backupCodes
           })
-          .eq('email', userObj.email);
+          .eq('id', stringToUUID(userId));
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to save 2FA enable in Supabase:', e);
       }
-    } catch (e) {
-      // Continue
     }
 
     return { user: userObj, backupCodes };
   }
 
-  // 4. Disable 2FA
   static async disable2FA(userId: string): Promise<{ user: User }> {
-    let userObj: User | undefined;
-    for (const u of db.users.values()) {
-      if (u.id === userId) {
-        userObj = u;
-        break;
+    let userObj: User | undefined = currentUserSession?.id === userId ? currentUserSession : undefined;
+    if (!userObj) {
+      for (const u of db.users.values()) {
+        if (u.id === userId) {
+          userObj = u;
+          break;
+        }
       }
     }
 
@@ -454,10 +605,11 @@ export class AuthService {
     delete userObj.twoFactorSecret;
     delete userObj.pendingTwoFactorSecret;
     delete userObj.backupCodes;
+    db.users.set(userObj.email, userObj);
 
-    try {
-      const supabase = getSupabaseClient();
-      if (supabase) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
         await supabase
           .from('profiles')
           .update({
@@ -465,20 +617,70 @@ export class AuthService {
             two_factor_secret: null,
             backup_codes: []
           })
-          .eq('email', userObj.email);
+          .eq('id', stringToUUID(userId));
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to disable 2FA in Supabase:', e);
       }
-    } catch (e) {
-      // Continue
     }
 
     return { user: userObj };
   }
 
-  // 5. Active Sessions Management
-  static getActiveSessions(userId: string, currentToken?: string): UserSession[] {
+  static async getActiveSessions(userId: string, currentToken?: string): Promise<UserSession[]> {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('user_sessions')
+          .select('*')
+          .eq('user_id', stringToUUID(userId))
+          .eq('is_active', true);
+
+        if (Array.isArray(data) && data.length > 0) {
+          return data.map(s => ({
+            id: s.id,
+            userId: s.user_id,
+            token: s.session_token || currentToken || 'default-token',
+            ipAddress: s.ip_address || '127.0.0.1',
+            userAgent: s.user_agent || 'Chrome / macOS (Current Session)',
+            deviceType: s.device_type || 'desktop',
+            createdAt: s.created_at || new Date().toISOString(),
+            lastActiveAt: s.last_active_at || new Date().toISOString(),
+            isActive: s.is_active
+          }));
+        }
+
+        // Create default active session row in Supabase
+        const sessId = stringToUUID('sess-' + Date.now() + '-' + userId);
+        const newSessRow = {
+          id: sessId,
+          user_id: stringToUUID(userId),
+          session_token: currentToken || 'default-token',
+          ip_address: '127.0.0.1',
+          user_agent: 'Chrome / macOS (Current Session)',
+          device_type: 'desktop',
+          is_active: true,
+          created_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString()
+        };
+        await supabase.from('user_sessions').insert(newSessRow);
+        return [{
+          id: newSessRow.id,
+          userId,
+          token: newSessRow.session_token,
+          ipAddress: newSessRow.ip_address,
+          userAgent: newSessRow.user_agent,
+          deviceType: newSessRow.device_type,
+          createdAt: newSessRow.created_at,
+          lastActiveAt: newSessRow.last_active_at,
+          isActive: true
+        }];
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to fetch sessions from Supabase:', e);
+      }
+    }
+
     const sessions = db.userSessions.filter(s => s.userId === userId && s.isActive);
-    
-    // Fallback if empty: create default active current session
     if (sessions.length === 0) {
       const defaultSession: UserSession = {
         id: 'sess-' + Math.random().toString(36).substr(2, 8),
@@ -494,15 +696,31 @@ export class AuthService {
       db.userSessions.push(defaultSession);
       return [defaultSession];
     }
-
     return sessions;
   }
 
-  static revokeSession(userId: string, sessionId: string): void {
+  static async revokeSession(userId: string, sessionId: string): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase
+          .from('user_sessions')
+          .update({
+            is_active: false,
+            revoked_at: new Date().toISOString()
+          })
+          .eq('id', stringToUUID(sessionId))
+          .eq('user_id', stringToUUID(userId));
+      } catch (e) {
+        console.warn('🔮 [AuthService] Failed to revoke session in Supabase:', e);
+      }
+    }
+
     const session = db.userSessions.find(s => s.id === sessionId && s.userId === userId);
     if (session) {
       session.isActive = false;
     }
   }
 }
+
 

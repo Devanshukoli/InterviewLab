@@ -4,7 +4,7 @@ import { catchAsync } from '../../middleware/error_handling';
 
 export class ProgressController {
   static getProgress = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    const data = ProgressService.getProgress();
+    const data = await ProgressService.getProgress();
     res.json({ success: true, data });
   });
 }
