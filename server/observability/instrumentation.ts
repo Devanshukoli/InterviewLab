@@ -8,8 +8,17 @@ import {
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from "@opentelemetry/semantic-conventions";
 
+const otlpEndpoint =
+  process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
+  "http://localhost:4318/v1/traces";
+
+const exporterUrl = otlpEndpoint.endsWith("/v1/traces")
+  ? otlpEndpoint
+  : `${otlpEndpoint.replace(/\/$/, "")}/v1/traces`;
+
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318/v1/traces",
+  url: exporterUrl,
 });
 
 export const sdk = new NodeSDK({
@@ -21,3 +30,4 @@ export const sdk = new NodeSDK({
   traceExporter,
   instrumentations: [getNodeAutoInstrumentations()],
 });
+

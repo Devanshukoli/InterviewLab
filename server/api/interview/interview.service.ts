@@ -1,10 +1,11 @@
 import crypto from 'crypto';
 import { db, InterviewSession, GeneratedQuestion, Evaluation } from '../../db';
-import { tracer } from '../../observability';
+import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { AuthService } from '../auth/auth.service';
 import { getLLMProvider } from '../../services/llm';
 import { NotFoundError } from '../../middleware/error_handling';
 import { getSupabaseClient } from '../../services/supabase';
+import { defaultEvaluationAgent } from '../../modules/agents/evaluation-agent';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_USER_UUID = 'a1b2c3d4-0000-0000-0000-000000000001';
@@ -44,7 +45,9 @@ export class InterviewService {
     fileType?: string, 
     extraData?: { fileName?: string; fileSize?: number; fileUrl?: string }
   ) {
-    const span = tracer.startSpan('resume-agent:parseAndExtract');
+    const user = AuthService.getCurrentUser();
+    const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
+    const span = tracer.startSpan('resume-agent:parseAndExtract', undefined, undefined, aiAttrs);
     try {
       const user = AuthService.getCurrentUser();
       const resumeId = crypto.randomUUID();
@@ -114,7 +117,9 @@ export class InterviewService {
       fileUrl?: string;
     }
   ) {
-    const span = tracer.startSpan('resume-agent:updateResume');
+    const user = AuthService.getCurrentUser();
+    const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
+    const span = tracer.startSpan('resume-agent:updateResume', undefined, undefined, aiAttrs);
     try {
       const existing = db.resumes.get(id);
       const now = new Date().toISOString();
@@ -174,7 +179,9 @@ export class InterviewService {
   }
 
   static uploadJobDescription(text: string) {
-    const span = tracer.startSpan('jd-agent:parseJobDescription');
+    const user = AuthService.getCurrentUser();
+    const aiAttrs = getAITelemetryAttributes({ userId: user?.id });
+    const span = tracer.startSpan('jd-agent:parseJobDescription', undefined, undefined, aiAttrs);
     try {
       const user = AuthService.getCurrentUser();
       const jdId = 'jd-' + Math.random().toString(36).substr(2, 9);
@@ -216,7 +223,14 @@ export class InterviewService {
       difficulty = 'medium'
     } = payload;
 
-    const span = tracer.startSpan('question-agent:generateQuestions');
+    const user = AuthService.getCurrentUser();
+    const aiAttrs = getAITelemetryAttributes({
+      userId: user?.id,
+      interviewType,
+      difficulty,
+      experienceLevel
+    });
+    const span = tracer.startSpan('question-agent:generateQuestions', undefined, undefined, aiAttrs);
 
     try {
       const user = AuthService.getCurrentUser();
@@ -258,9 +272,15 @@ Return a valid JSON array of exactly ${questionCount} objects with this schema:
 ]
 Do NOT include any markdown formatting or code fences. Output purely raw JSON array.`;
 
+        const llmStartTime = Date.now();
+        span.addEvent('LLM Request Started', { 'llm.attempt': 1 });
         const aiOutput = await provider.generate(prompt, 'You are an expert enterprise technical interviewer. Output valid raw JSON array only.');
+        const llmDuration = Date.now() - llmStartTime;
+        recordMetric.recordLLMRequestDuration(llmDuration, { agent: 'question-agent', 'llm.attempt': 1 });
+        span.addEvent('LLM Response Received', { 'llm.attempt': 1, 'response.length': aiOutput.length });
         const cleanJson = aiOutput.replace(/```json/g, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(cleanJson);
+        span.addEvent('JSON Parsed', { 'llm.attempt': 1 });
         if (Array.isArray(parsed) && parsed.length > 0) {
           questions = parsed.map((q: any, idx: number) => ({
             id: `q-${idx + 1}`,
@@ -270,8 +290,12 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
             difficulty: (difficulty as any),
             expectedConcepts: Array.isArray(q.expectedConcepts) ? q.expectedConcepts : [skills[idx % skills.length]]
           }));
+        } else {
+          span.addEvent('Validation Failed', { 'llm.attempt': 1, 'reason': 'empty_or_invalid_array' });
         }
       } catch (aiErr) {
+        recordMetric.recordLLMRequestFailure({ agent: 'question-agent', 'llm.attempt': 1, error: (aiErr as any)?.message || String(aiErr) });
+        span.addEvent('Validation Failed', { 'llm.attempt': 1, 'reason': 'llm_or_parse_failed' });
         console.warn('🔮 [InterviewService] LLM provider question generation skipped or failed, using structured template fallback:', aiErr);
       }
 
@@ -347,6 +371,8 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
       };
 
       db.sessions.set(sessionId, newSession);
+      recordMetric.recordInterviewStarted({ 'interview.type': interviewType, difficulty });
+      recordMetric.recordQuestionsGenerated(questions.length, { 'interview.type': interviewType, difficulty });
       span.end('OK', { 'session.id': sessionId, 'questions.count': questions.length, 'has_jd': !!jd });
 
       return newSession;
@@ -357,7 +383,12 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
   }
 
   static async evaluate(sessionId: string, questionId: string, answerText: string) {
-    const span = tracer.startSpan('evaluation-agent:evaluateAnswer');
+    const user = AuthService.getCurrentUser();
+    const aiAttrs = getAITelemetryAttributes({
+      userId: user?.id,
+      sessionId
+    });
+    const span = tracer.startSpan('evaluation-agent:evaluateAnswer', undefined, undefined, aiAttrs);
 
     try {
       const user = AuthService.getCurrentUser();
@@ -379,44 +410,21 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
       let missingPoints = ['Tracing context propagation across services', 'Resource-bound backpressure handles'];
       let suggestedAnswer = `To enhance this answer, elaborate on telemetry metadata spans and explicit error boundary resilience mechanisms.`;
 
-      // Attempt AI Evaluation via configured LLM Provider (Gemini, OpenAI, or Anthropic)
+      // Attempt AI Evaluation via EvaluationAgent
       try {
-        const provider = getLLMProvider();
-        const prompt = `You are a Principal SRE / Technical Interviewer grading a candidate's answer.
-Question: "${question.questionText}"
-Topic: "${question.topic}"
-Expected Concepts: ${JSON.stringify(question.expectedConcepts)}
-Candidate Answer: "${answerText}"
+        const evalResult = await defaultEvaluationAgent.evaluateAnswer(
+          question.questionText || question.topic,
+          answerText,
+          question.expectedConcepts
+        );
 
-Grade the candidate answer comprehensively. Return a JSON object with this schema:
-{
-  "score": 85,
-  "clarityRating": "excellent",
-  "feedback": "Concise technical feedback highlighting strengths and weaknesses",
-  "missingPoints": ["missing concept 1", "missing concept 2"],
-  "suggestedAnswer": "An exemplary response for high score"
-}
-clarityRating must be one of: "excellent", "good", "fair", "poor".
-Do NOT include markdown formatting or code fences. Output purely raw JSON object.`;
-
-        const aiOutput = await provider.generate(prompt, 'You are an expert technical interviewer evaluating candidate answers. Output valid raw JSON object only.');
-        const cleanJson = aiOutput.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanJson);
-
-        if (parsed && typeof parsed.score === 'number') {
-          score = Math.min(Math.max(parsed.score, 0), 100);
-          const validRatings = ['poor', 'fair', 'good', 'excellent'];
-          if (validRatings.includes(parsed.clarityRating)) {
-            clarityRating = parsed.clarityRating;
-          } else {
-            clarityRating = score >= 85 ? 'excellent' : score >= 70 ? 'good' : score >= 50 ? 'fair' : 'poor';
-          }
-          feedback = parsed.feedback || feedback;
-          if (Array.isArray(parsed.missingPoints)) missingPoints = parsed.missingPoints;
-          if (parsed.suggestedAnswer) suggestedAnswer = parsed.suggestedAnswer;
-        }
+        score = evalResult.score;
+        clarityRating = score >= 85 ? 'excellent' : score >= 70 ? 'good' : score >= 50 ? 'fair' : 'poor';
+        feedback = evalResult.feedback || feedback;
+        missingPoints = evalResult.missingConcepts.length > 0 ? evalResult.missingConcepts : missingPoints;
+        suggestedAnswer = evalResult.idealAnswer || suggestedAnswer;
       } catch (aiErr) {
-        console.warn('🔮 [InterviewService] LLM provider evaluation skipped or failed, using baseline evaluator:', aiErr);
+        console.warn('🔮 [InterviewService] EvaluationAgent call failed, using baseline evaluator:', aiErr);
       }
 
       const evaluation: Evaluation = {
@@ -431,6 +439,7 @@ Do NOT include markdown formatting or code fences. Output purely raw JSON object
       };
 
       session.evaluations[questionId] = evaluation;
+      recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': score });
 
       const allAnswered = session.questions.every(q => session.answers[q.id]);
       if (allAnswered) {

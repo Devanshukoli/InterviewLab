@@ -1,7 +1,11 @@
-import { localTelemetryStore } from '../../observability';
+import { localTelemetryStore, localLogStore } from '../../observability';
 
 export class TelemetryService {
   static getTelemetry() {
-    return localTelemetryStore;
+    return {
+      traces: localTelemetryStore,
+      logs: localLogStore
+    };
   }
 }
+
