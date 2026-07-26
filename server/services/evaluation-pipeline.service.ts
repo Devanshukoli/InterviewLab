@@ -76,7 +76,6 @@ export class EvaluationPipelineService {
             input.expectedTopics
           )
         );
-        recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': evaluationResult.score });
         evalSpan.end('OK', { ...aiAttrs, 'evaluation.score': evaluationResult.score });
       } catch (evalErr: any) {
         evalSpan.recordException(evalErr);

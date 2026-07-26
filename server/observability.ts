@@ -22,7 +22,7 @@ export const pinoLogger = pino({
 
 const meter = metrics.getMeter(process.env.OTEL_SERVICE_NAME || 'interviewops-api');
 
-// OpenTelemetry Metrics Instruments
+// OpenTelemetry Metrics Instruments (9 required metrics)
 export const interviewsTotalCounter = meter.createCounter('interviews_total', {
   description: 'Total number of interviews initialized or completed',
 });
@@ -31,17 +31,36 @@ export const questionsGeneratedTotalCounter = meter.createCounter('questions_gen
   description: 'Total number of interview questions generated',
 });
 
-export const evaluationCompletedTotalCounter = meter.createCounter('evaluation_completed_total', {
+export const evaluationsCompletedTotalCounter = meter.createCounter('evaluations_completed_total', {
   description: 'Total number of evaluations completed',
 });
 
-export const llmRequestDurationHistogram = meter.createHistogram('llm_request_duration', {
+export const llmRequestsTotalCounter = meter.createCounter('llm_requests_total', {
+  description: 'Total number of LLM requests initiated',
+});
+
+export const llmFailuresTotalCounter = meter.createCounter('llm_failures_total', {
+  description: 'Total number of failed LLM requests',
+});
+
+export const llmRequestDurationHistogram = meter.createHistogram('llm_request_duration_ms', {
   description: 'Duration of LLM requests in milliseconds',
   unit: 'ms',
 });
 
-export const llmRequestFailuresCounter = meter.createCounter('llm_request_failures', {
-  description: 'Total number of failed LLM requests',
+export const resumeProcessingDurationHistogram = meter.createHistogram('resume_processing_duration_ms', {
+  description: 'Duration of resume processing in milliseconds',
+  unit: 'ms',
+});
+
+export const questionGenerationDurationHistogram = meter.createHistogram('question_generation_duration_ms', {
+  description: 'Duration of question generation in milliseconds',
+  unit: 'ms',
+});
+
+export const evaluationDurationHistogram = meter.createHistogram('evaluation_duration_ms', {
+  description: 'Duration of answer evaluation in milliseconds',
+  unit: 'ms',
 });
 
 export const recordMetric = {
@@ -52,13 +71,25 @@ export const recordMetric = {
     questionsGeneratedTotalCounter.add(count, attributes);
   },
   recordEvaluationCompleted: (count: number = 1, attributes: Record<string, string | number | boolean> = {}) => {
-    evaluationCompletedTotalCounter.add(count, attributes);
+    evaluationsCompletedTotalCounter.add(count, attributes);
+  },
+  recordLLMRequest: (attributes: Record<string, string | number | boolean> = {}) => {
+    llmRequestsTotalCounter.add(1, attributes);
+  },
+  recordLLMRequestFailure: (attributes: Record<string, string | number | boolean> = {}) => {
+    llmFailuresTotalCounter.add(1, attributes);
   },
   recordLLMRequestDuration: (durationMs: number, attributes: Record<string, string | number | boolean> = {}) => {
     llmRequestDurationHistogram.record(durationMs, attributes);
   },
-  recordLLMRequestFailure: (attributes: Record<string, string | number | boolean> = {}) => {
-    llmRequestFailuresCounter.add(1, attributes);
+  recordResumeProcessingDuration: (durationMs: number, attributes: Record<string, string | number | boolean> = {}) => {
+    resumeProcessingDurationHistogram.record(durationMs, attributes);
+  },
+  recordQuestionGenerationDuration: (durationMs: number, attributes: Record<string, string | number | boolean> = {}) => {
+    questionGenerationDurationHistogram.record(durationMs, attributes);
+  },
+  recordEvaluationDuration: (durationMs: number, attributes: Record<string, string | number | boolean> = {}) => {
+    evaluationDurationHistogram.record(durationMs, attributes);
   },
 };
 

@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config';
 import { getCurrentUserKeys } from '../middleware/userContext.middleware';
+import { recordMetric } from '../observability';
 
 export interface LLMProvider {
   name: string;
@@ -37,6 +38,7 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
+    recordMetric.recordLLMRequest({ provider: this.name });
     try {
       console.log('🔮 [GeminiProvider] Initiating content generation call...');
       const client = this.getClient();
@@ -105,6 +107,7 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
+    recordMetric.recordLLMRequest({ provider: this.name });
     try {
       console.log('🔮 [OpenAIProvider] Initiating Chat Completion call (gpt-4o)...');
       const client = this.getClient();
@@ -173,6 +176,7 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
+    recordMetric.recordLLMRequest({ provider: this.name });
     try {
       console.log('🔮 [AnthropicProvider] Initiating Messages call (claude-3-5-sonnet-20241022)...');
       const client = this.getClient();

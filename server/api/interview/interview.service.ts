@@ -512,6 +512,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
       let missingPoints = ['Tracing context propagation across services', 'Resource-bound backpressure handles'];
       let suggestedAnswer = `To enhance this answer, elaborate on telemetry metadata spans and explicit error boundary resilience mechanisms.`;
 
+      let aiEvalSuccess = false;
       try {
         const evalResult = await defaultEvaluationAgent.evaluateAnswer(
           question.questionText || question.topic,
@@ -524,6 +525,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
         feedback = evalResult.feedback || feedback;
         missingPoints = evalResult.missingConcepts.length > 0 ? evalResult.missingConcepts : missingPoints;
         suggestedAnswer = evalResult.idealAnswer || suggestedAnswer;
+        aiEvalSuccess = true;
       } catch (aiErr) {
         console.warn('🔮 [InterviewService] EvaluationAgent call failed, using baseline evaluator:', aiErr);
       }
@@ -541,7 +543,9 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
       };
 
       session.evaluations[questionId] = evaluation;
-      recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': score });
+      if (!aiEvalSuccess) {
+        recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': score });
+      }
 
       const now = new Date().toISOString();
 

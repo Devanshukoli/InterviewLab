@@ -2,6 +2,9 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { metrics } from "@opentelemetry/api";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
@@ -14,12 +17,14 @@ import {
 // or https://ingest.<region>.signoz.cloud:443 for SigNoz Cloud).
 const otlpBase = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318").replace(/\/$/, "");
 
-// Traces and logs each hit their own OTLP signal path off the same base endpoint.
+// Traces, logs, and metrics each hit their own OTLP signal path off the same base endpoint.
 // Explicit per-signal env vars (if set) win; otherwise we derive them from the base.
 const tracesEndpoint =
   process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || `${otlpBase}/v1/traces`;
 const logsEndpoint =
   process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || `${otlpBase}/v1/logs`;
+const metricsEndpoint =
+  process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || `${otlpBase}/v1/metrics`;
 
 // SigNoz Cloud requires an ingestion key header; self-hosted collectors typically don't.
 const otlpHeaders = process.env.OTEL_EXPORTER_OTLP_HEADERS
@@ -41,13 +46,33 @@ const logExporter = new OTLPLogExporter({
   headers: otlpHeaders,
 });
 
+const metricExporter = new OTLPMetricExporter({
+  url: metricsEndpoint,
+  headers: otlpHeaders,
+});
+
+const metricReader = new PeriodicExportingMetricReader({
+  exporter: metricExporter,
+  exportIntervalMillis: 5000,
+});
+
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "interviewops-api",
+  [ATTR_SERVICE_VERSION]: "1.0.0",
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || "development",
+});
+
+export const meterProvider = new MeterProvider({
+  resource,
+  readers: [metricReader],
+});
+
+metrics.setGlobalMeterProvider(meterProvider);
+
 export const sdk = new NodeSDK({
-  resource: resourceFromAttributes({
-    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "interviewops-api",
-    [ATTR_SERVICE_VERSION]: "1.0.0",
-    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || "development",
-  }),
+  resource,
   traceExporter,
+  metricReader,
   // Batches log records and ships them to SigNoz via OTLP/HTTP, same as traces.
   // NOTE: sdk-logs@0.221.x takes a single options object here (not (exporter, config)
   // like older versions / the SigNoz docs snippet, which is pinned to sdk-logs@0.208.x).

@@ -230,6 +230,7 @@ export class QuestionAgent {
       experienceLevel
     });
     const span = tracer.startSpan('question-agent:generateQuestions', undefined, undefined, aiAttrs);
+    const questionStartTime = Date.now();
 
     try {
       const provider = getLLMProvider(this.providerName);
@@ -280,6 +281,7 @@ export class QuestionAgent {
         const validation = validateAndNormalizeQuestionResult(parsedJson, interviewType, difficulty);
         if (validation.isValid && validation.data) {
           recordMetric.recordQuestionsGenerated(validation.data.questions.length, { 'interview.type': interviewType, 'difficulty': difficulty });
+          recordMetric.recordQuestionGenerationDuration(Date.now() - questionStartTime, { agent: 'question-agent', 'interview.type': interviewType, difficulty });
           span.end('OK', {
             'questions.count': validation.data.questions.length,
             'questions.interview_type': interviewType,
@@ -360,6 +362,7 @@ Parameters:
 
       span.addEvent('Retry Success', { 'retry.attempt': 2 });
       recordMetric.recordQuestionsGenerated(retryValidation.data.questions.length, { 'interview.type': interviewType, 'difficulty': difficulty });
+      recordMetric.recordQuestionGenerationDuration(Date.now() - questionStartTime, { agent: 'question-agent', 'interview.type': interviewType, difficulty, retry_used: true });
 
       span.end('OK', {
         'questions.count': retryValidation.data.questions.length,

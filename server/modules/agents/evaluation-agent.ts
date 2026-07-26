@@ -225,6 +225,7 @@ export class EvaluationAgent {
 
     const aiAttrs = getAITelemetryAttributes({ llmProvider: this.providerName, agentName: 'evaluation-agent' });
     const span = tracer.startSpan('evaluation-agent:evaluateAnswer', undefined, undefined, aiAttrs);
+    const evalStartTime = Date.now();
 
     try {
       const provider = getLLMProvider(this.providerName);
@@ -269,6 +270,7 @@ export class EvaluationAgent {
         const validation = validateAndNormalizeEvaluationResult(parsedJson);
         if (validation.isValid && validation.data) {
           recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': validation.data.score });
+          recordMetric.recordEvaluationDuration(Date.now() - evalStartTime, { agent: 'evaluation-agent' });
           span.end('OK', {
             'evaluation.score': validation.data.score,
             'evaluation.strengths_count': validation.data.strengths.length,
@@ -344,6 +346,7 @@ Candidate Answer: "${candidateAnswer.trim()}"`;
 
       span.addEvent('Retry Success', { 'retry.attempt': 2 });
       recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': retryValidation.data.score });
+      recordMetric.recordEvaluationDuration(Date.now() - evalStartTime, { agent: 'evaluation-agent', retry_used: true });
 
       span.end('OK', {
         'evaluation.score': retryValidation.data.score,

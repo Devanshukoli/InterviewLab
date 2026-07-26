@@ -179,6 +179,7 @@ export class ResumeAgent {
 
     const aiAttrs = getAITelemetryAttributes({ llmProvider: this.providerName, agentName: 'resume-agent' });
     const span = tracer.startSpan('resume-agent:analyzeResume', undefined, undefined, aiAttrs);
+    const resumeStartTime = Date.now();
 
     try {
       const provider = getLLMProvider(this.providerName);
@@ -220,6 +221,7 @@ export class ResumeAgent {
       if (parseSuccess) {
         const validation = validateAndNormalizeResumeAnalysis(parsedJson);
         if (validation.isValid && validation.data) {
+          recordMetric.recordResumeProcessingDuration(Date.now() - resumeStartTime, { agent: 'resume-agent' });
           span.end('OK', {
             'candidate.name': validation.data.candidateName,
             'candidate.experience_years': validation.data.experienceYears,
@@ -297,6 +299,7 @@ ${resumeText.trim()}
       }
 
       span.addEvent('Retry Success', { 'retry.attempt': 2 });
+      recordMetric.recordResumeProcessingDuration(Date.now() - resumeStartTime, { agent: 'resume-agent', retry_used: true });
 
       span.end('OK', {
         'candidate.name': retryValidation.data.candidateName,
