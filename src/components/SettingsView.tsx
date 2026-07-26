@@ -23,6 +23,7 @@ import {
   FileText
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { fetchWithAuth } from '../lib/auth';
 import { applyTheme, getStoredTheme } from '../lib/theme';
 import { logoutUser } from '../lib/auth';
 
@@ -137,9 +138,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     setExportSuccess(null);
     setExportError(null);
     try {
-      const res = await fetch('/api/profile/export', {
-        headers: getAuthHeaders()
-      });
+      const res = await fetchWithAuth('/api/profile/export');
       if (!res.ok) {
         throw new Error('Failed to fetch data export');
       }
@@ -180,9 +179,9 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     setClearError(null);
 
     try {
-      const res = await fetch('/api/profile/privacy/clear', {
+      const res = await fetchWithAuth('/api/profile/privacy/clear', {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category })
       });
 
@@ -204,11 +203,6 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     }
   };
 
-  const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('auth_token');
-    return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-  };
-
   // Fetch active sessions when security tab is opened
   useEffect(() => {
     if (activeTab === 'security') {
@@ -219,9 +213,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const fetchSessions = async () => {
     setIsLoadingSessions(true);
     try {
-      const res = await fetch('/api/auth/sessions', {
-        headers: getAuthHeaders()
-      });
+      const res = await fetchWithAuth('/api/auth/sessions');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setSessions(json.data);
@@ -252,9 +244,9 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     }
     setIsChangingPass(true);
     try {
-      const res = await fetch('/api/auth/change-password', {
+      const res = await fetchWithAuth('/api/auth/change-password', {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword })
       });
       const json = await res.json();
@@ -275,9 +267,8 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     setTotpError(null);
     setIsSettingUp2FA(true);
     try {
-      const res = await fetch('/api/auth/2fa/setup', {
-        method: 'POST',
-        headers: getAuthHeaders()
+      const res = await fetchWithAuth('/api/auth/2fa/setup', {
+        method: 'POST'
       });
       const json = await res.json();
       if (json.success && json.data) {
@@ -301,9 +292,9 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     }
     setIsVerifying2FA(true);
     try {
-      const res = await fetch('/api/auth/2fa/verify', {
+      const res = await fetchWithAuth('/api/auth/2fa/verify', {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: totpCode })
       });
       const json = await res.json();
@@ -329,9 +320,8 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       return;
     }
     try {
-      const res = await fetch('/api/auth/2fa/disable', {
-        method: 'POST',
-        headers: getAuthHeaders()
+      const res = await fetchWithAuth('/api/auth/2fa/disable', {
+        method: 'POST'
       });
       const json = await res.json();
       if (json.success) {
@@ -347,9 +337,8 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
 
   const handleRevokeSession = async (sessionId: string) => {
     try {
-      const res = await fetch(`/api/auth/sessions/${sessionId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
+      const res = await fetchWithAuth(`/api/auth/sessions/${sessionId}`, {
+        method: 'DELETE'
       });
       const json = await res.json();
       if (json.success) {
@@ -376,9 +365,9 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     setIsDeleting(true);
 
     try {
-      const res = await fetch('/api/profile', {
+      const res = await fetchWithAuth('/api/profile', {
         method: 'DELETE',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: deletePassword })
       });
 

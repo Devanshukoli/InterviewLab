@@ -7,6 +7,20 @@ import {
   ATTR_SERVICE_VERSION,
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from "@opentelemetry/semantic-conventions";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+
+const otlpBase = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318").replace(/\/$/, "");
+const tracesEndpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || `${otlpBase}/v1/traces`;
+const logsEndpoint = process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || `${otlpBase}/v1/logs`;
+
+const otlpHeaders = process.env.OTEL_EXPORTER_OTLP_HEADERS
+  ? Object.fromEntries(process.env.OTEL_EXPORTER_OTLP_HEADERS.split(",").map(p => {
+    const [k, ...rest] = p.split("="); return [k.trim(), rest.join("=").trim()];
+  }))
+  : undefined;
+
+const logExporter = new OTLPLogExporter({ url: logsEndpoint, headers: otlpHeaders });
 
 const otlpEndpoint =
   process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
@@ -28,6 +42,6 @@ export const sdk = new NodeSDK({
     [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || "development",
   }),
   traceExporter,
+  logRecordProcessor: new BatchLogRecordProcessor({ exporter: logExporter }), // note the object shape
   instrumentations: [getNodeAutoInstrumentations()],
 });
-

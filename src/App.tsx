@@ -216,11 +216,11 @@ export default function App() {
     try {
       let activeJdId: string | undefined = undefined;
 
-      // If JD text provided, upload it first
+       // If JD text provided, upload it first
       if (jobDescriptionText && jobDescriptionText.trim()) {
-        const jRes = await fetch('/api/interview/upload-job-description', {
+        const jRes = await fetchWithAuth('/api/interview/upload-job-description', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: jobDescriptionText })
         });
         const jJson = await jRes.json();
@@ -230,9 +230,9 @@ export default function App() {
       }
 
       // Generate Questions
-      const qRes = await fetch('/api/interview/generate-questions', {
+      const qRes = await fetchWithAuth('/api/interview/generate-questions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           resumeId,
           jobDescriptionId: activeJdId,
@@ -262,9 +262,9 @@ export default function App() {
     setIsEvaluatingAnswer(true);
 
     try {
-      const res = await fetch('/api/interview/evaluate', {
+      const res = await fetchWithAuth('/api/interview/evaluate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: currentSession.id,
           questionId,
@@ -296,13 +296,8 @@ export default function App() {
         formData.append('file', payload.file);
         formData.append('title', title);
 
-        const token = localStorage.getItem('auth_token');
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch('/api/interview/upload-resume-file', {
+        const res = await fetchWithAuth('/api/interview/upload-resume-file', {
           method: 'POST',
-          headers,
           body: formData
         });
         const json = await res.json();
@@ -312,9 +307,9 @@ export default function App() {
           throw new Error(json.message || 'File upload failed');
         }
       } else {
-        const res = await fetch('/api/interview/upload-resume', {
+        const res = await fetchWithAuth('/api/interview/upload-resume', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: payload.text || '', title })
         });
         const json = await res.json();
@@ -355,13 +350,8 @@ export default function App() {
         formData.append('file', payload.file);
         formData.append('title', payload.title);
 
-        const token = localStorage.getItem('auth_token');
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch(`/api/interview/resume/${id}`, {
+        const res = await fetchWithAuth(`/api/interview/resume/${id}`, {
           method: 'PUT',
-          headers,
           body: formData
         });
         const json = await res.json();
@@ -369,9 +359,9 @@ export default function App() {
           setResumes(prev => prev.map(r => r.id === id ? json.data : r));
         }
       } else {
-        const res = await fetch(`/api/interview/resume/${id}`, {
+        const res = await fetchWithAuth(`/api/interview/resume/${id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: payload.title, text: payload.text })
         });
         const json = await res.json();
@@ -400,9 +390,8 @@ export default function App() {
   // Delete Resume from Library
   const handleDeleteResume = async (id: string) => {
     try {
-      await fetch(`/api/resumes/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
+      await fetchWithAuth(`/api/resumes/${id}`, {
+        method: 'DELETE'
       });
       setResumes(prev => prev.filter(r => r.id !== id));
     } catch (e) {
@@ -413,9 +402,9 @@ export default function App() {
   // Update Profile
   const handleUpdateUser = async (updatedFields: Partial<UserProfile>) => {
     if (!user) return;
-    const res = await fetch('/api/profile', {
+    const res = await fetchWithAuth('/api/profile', {
       method: 'PATCH',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedFields)
     });
     const json = await res.json();

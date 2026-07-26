@@ -12,6 +12,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { SavedResume, InterviewOptions, InterviewSession } from '../types';
+import { fetchWithAuth } from '../lib/auth';
 
 interface NewInterviewFlowProps {
   savedResumes: SavedResume[];
@@ -73,7 +74,7 @@ Requirements:
     // If new resume uploaded/pasted
     if (!activeResumeId && resumeText.trim()) {
       try {
-        const res = await fetch('/api/interview/upload-resume', {
+        const res = await fetchWithAuth('/api/interview/upload-resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -97,7 +98,7 @@ Requirements:
     let jobDescriptionId: string | null = null;
     if (!skipJd && jdText.trim()) {
       try {
-        const jRes = await fetch('/api/interview/upload-job-description', {
+        const jRes = await fetchWithAuth('/api/interview/upload-job-description', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: jdText })

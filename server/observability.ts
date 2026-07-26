@@ -1,9 +1,16 @@
+import pino from 'pino';
 import { Request, Response, NextFunction } from 'express';
 import { trace, metrics, context, SpanStatusCode } from '@opentelemetry/api';
 import { AsyncLocalStorage } from 'async_hooks';
 import { PromptService } from './services/prompt.service';
 
 const meter = metrics.getMeter(process.env.OTEL_SERVICE_NAME || 'interviewops-api');
+
+export const pinoLogger = pino({
+  level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+  base: { service: process.env.OTEL_SERVICE_NAME || 'interviewops-api' },
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
 
 // OpenTelemetry Metrics Instruments
 export const interviewsTotalCounter = meter.createCounter('interviews_total', {
