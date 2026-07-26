@@ -26,6 +26,9 @@ export class BillingService {
             createdAt: b.created_at
           }));
         }
+        if (error) {
+          console.warn('🔮 [BillingService] billing_history query returned an error:', error.message);
+        }
       } catch (e) {
         console.warn('🔮 [BillingService] Failed to query billing_history in Supabase:', e);
       }
@@ -57,6 +60,9 @@ export class BillingService {
           };
           db.subscriptions.set(userId, sub);
           return sub;
+        }
+        if (error) {
+          console.warn('🔮 [BillingService] user_subscriptions query returned an error:', error.message);
         }
       } catch (e) {
         console.warn('🔮 [BillingService] Failed to query user_subscriptions in Supabase:', e);

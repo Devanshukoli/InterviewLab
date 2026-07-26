@@ -1,5 +1,5 @@
 import { db, Resume, JobDescription, stringToUUID } from '../../db';
-import { getSupabaseClient } from '../../services/supabase';
+import { getSupabaseClient, unwrap } from '../../services/supabase';
 
 export class HistoryService {
   static async getResumes(userId: string = 'usr-anonymous'): Promise<Resume[]> {
@@ -49,7 +49,7 @@ export class HistoryService {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        await supabase.from('resumes').delete().eq('id', stringToUUID(id));
+        await unwrap(supabase.from('resumes').delete().eq('id', stringToUUID(id)));
       } catch (e) {
         console.warn('🔮 [HistoryService] Failed to delete resume in Supabase:', e);
       }

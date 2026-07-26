@@ -25,6 +25,9 @@ export class ProgressService {
           db.progress.set(userId, progressList);
           return progressList;
         }
+        if (error) {
+          console.warn('🔮 [ProgressService] learning_progress query returned an error:', error.message);
+        }
       } catch (e) {
         console.warn('🔮 [ProgressService] Failed to query learning_progress in Supabase:', e);
       }

@@ -7,7 +7,7 @@ import {
   EvaluationPipelineResult
 } from '../../src/shared/types';
 import { db } from '../db';
-import { getSupabaseClient } from './supabase';
+import { getSupabaseClient, unwrap } from './supabase';
 import { tracer, getAITelemetryAttributes, recordMetric } from '../observability';
 import { AppError } from '../middleware/error_handling';
 
@@ -149,13 +149,13 @@ export class EvaluationPipelineService {
           if (supabase) {
             (async () => {
               try {
-                await supabase.from('interview_sessions').upsert({
+                await unwrap(supabase.from('interview_sessions').upsert({
                   id: sessionObj.id,
                   status: sessionObj.status,
                   answers: sessionObj.answers,
                   evaluations: sessionObj.evaluations,
                   updated_at: persistedAt
-                });
+                }));
               } catch (supaErr) {
                 console.warn('🔮 [Supabase] Session evaluation sync notice:', supaErr);
               }

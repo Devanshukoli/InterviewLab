@@ -1,16 +1,26 @@
-import pino from 'pino';
 import { Request, Response, NextFunction } from 'express';
 import { trace, metrics, context, SpanStatusCode } from '@opentelemetry/api';
 import { AsyncLocalStorage } from 'async_hooks';
+import pino from 'pino';
 import { PromptService } from './services/prompt.service';
 
-const meter = metrics.getMeter(process.env.OTEL_SERVICE_NAME || 'interviewops-api');
-
+/**
+ * The real logger. @opentelemetry/instrumentation-pino (bundled inside
+ * getNodeAutoInstrumentations() in observability/instrumentation.ts) patches this
+ * module at import time, so every log call made through this instance:
+ *   1. gets trace_id / span_id / trace_flags stamped on automatically when called
+ *      inside an active OTel span, and
+ *   2. is forwarded into the OTel LoggerProvider -> BatchLogRecordProcessor -> SigNoz.
+ * Plain console.log calls elsewhere in the app do NOT get this treatment, which is
+ * why setupConsoleInterceptor() below routes them through pinoLogger too.
+ */
 export const pinoLogger = pino({
   level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
   base: { service: process.env.OTEL_SERVICE_NAME || 'interviewops-api' },
   timestamp: pino.stdTimeFunctions.isoTime,
 });
+
+const meter = metrics.getMeter(process.env.OTEL_SERVICE_NAME || 'interviewops-api');
 
 // OpenTelemetry Metrics Instruments
 export const interviewsTotalCounter = meter.createCounter('interviews_total', {
@@ -179,10 +189,6 @@ export function sanitizeLogData(value: any, depth = 0): any {
   return value;
 }
 
-const originalConsoleLog = console.log;
-const originalConsoleWarn = console.warn;
-const originalConsoleError = console.error;
-
 export function logStructured(
   level: string,
   message: string,
@@ -216,14 +222,26 @@ export function logStructured(
     ...sanitizedMeta
   };
 
-  const jsonString = JSON.stringify(logEntry);
-  if (level === 'error') {
-    originalConsoleError.call(console, jsonString);
-  } else if (level === 'warn') {
-    originalConsoleWarn.call(console, jsonString);
-  } else {
-    originalConsoleLog.call(console, jsonString);
-  }
+  // pino's own level names are a superset of ours ('debug' included); anything unrecognized
+  // (e.g. a stray custom level) falls back to 'info' so we never throw from a logging call.
+  const pinoLevel = (['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const).includes(level as any)
+    ? (level as pino.Level)
+    : 'info';
+
+  // Pass fields as the first arg (pino merges them into the JSON line) and the message second.
+  // This is also the call shape @opentelemetry/instrumentation-pino hooks into to attach
+  // trace_id/span_id/trace_flags and forward the record to SigNoz.
+  pinoLogger[pinoLevel](
+    {
+      traceId: logEntry.traceId,
+      spanId: logEntry.spanId,
+      interviewId: logEntry.interviewId,
+      agentName: logEntry.agentName,
+      requestDuration: logEntry.requestDuration,
+      ...sanitizedMeta,
+    },
+    logEntry.message
+  );
 
   addLocalLog(logEntry);
 
@@ -244,29 +262,22 @@ export function setupConsoleInterceptor() {
   if (consoleIntercepted) return;
   consoleIntercepted = true;
 
+  // NOTE: logStructured() no longer writes to console at all (it writes via pinoLogger,
+  // which owns its own output stream) — so there's no risk of console.log calling itself
+  // recursively here anymore. Any raw console.* call anywhere in the app (agents, libraries,
+  // etc.) gets funneled through the same pino instance so it's sanitized, trace-correlated,
+  // and shipped to SigNoz just like everything logged via `logger.*` directly.
   console.log = (...args: any[]) => {
-    if (args.length === 1 && typeof args[0] === 'string' && args[0].startsWith('{') && args[0].includes('"traceId"')) {
-      originalConsoleLog.apply(console, args as [any, ...any[]]);
-      return;
-    }
     const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(sanitizeLogData(a)) : String(a))).join(' ');
     logStructured('info', msg);
   };
 
   console.warn = (...args: any[]) => {
-    if (args.length === 1 && typeof args[0] === 'string' && args[0].startsWith('{') && args[0].includes('"traceId"')) {
-      originalConsoleWarn.apply(console, args as [any, ...any[]]);
-      return;
-    }
     const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(sanitizeLogData(a)) : String(a))).join(' ');
     logStructured('warn', msg);
   };
 
   console.error = (...args: any[]) => {
-    if (args.length === 1 && typeof args[0] === 'string' && args[0].startsWith('{') && args[0].includes('"traceId"')) {
-      originalConsoleError.apply(console, args as [any, ...any[]]);
-      return;
-    }
     const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(sanitizeLogData(a)) : String(a))).join(' ');
     logStructured('error', msg);
   };

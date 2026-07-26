@@ -3,7 +3,7 @@ import { db, InterviewSession, GeneratedQuestion, Evaluation, Resume, JobDescrip
 import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
 import { getLLMProvider } from '../../services/llm';
 import { NotFoundError } from '../../middleware/error_handling';
-import { getSupabaseClient } from '../../services/supabase';
+import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { defaultEvaluationAgent } from '../../modules/agents/evaluation-agent';
 
 export function ensureUUID(id?: string): string {
@@ -66,7 +66,7 @@ export class InterviewService {
       const supabase = getSupabaseClient();
       if (supabase) {
         try {
-          await supabase.from('resumes').insert({
+          await unwrap(supabase.from('resumes').insert({
             id: stringToUUID(resumeId),
             user_id: stringToUUID(userId),
             title: newResume.title,
@@ -79,7 +79,7 @@ export class InterviewService {
             experience_years: newResume.experienceYears,
             uploaded_at: newResume.uploadedAt,
             updated_at: newResume.updatedAt
-          });
+          }));
         } catch (err) {
           console.warn('🔮 [InterviewService] Resume insert error in Supabase:', err);
         }
@@ -114,7 +114,7 @@ export class InterviewService {
 
       if (!existing && supabase) {
         try {
-          const { data } = await supabase.from('resumes').select('*').eq('id', stringToUUID(id)).maybeSingle();
+          const data = await unwrap(supabase.from('resumes').select('*').eq('id', stringToUUID(id)).maybeSingle());
           if (data) {
             existing = {
               id: data.id,
@@ -160,7 +160,7 @@ export class InterviewService {
 
       if (supabase) {
         try {
-          await supabase.from('resumes').upsert({
+          await unwrap(supabase.from('resumes').upsert({
             id: stringToUUID(id),
             user_id: stringToUUID(updatedResume.userId),
             title: updatedResume.title,
@@ -172,7 +172,7 @@ export class InterviewService {
             skills: updatedResume.skills,
             experience_years: updatedResume.experienceYears,
             updated_at: now
-          });
+          }));
         } catch (err) {
           console.warn('🔮 [InterviewService] Resume update error in Supabase:', err);
         }
@@ -211,7 +211,7 @@ export class InterviewService {
       const supabase = getSupabaseClient();
       if (supabase) {
         try {
-          await supabase.from('job_descriptions').insert({
+          await unwrap(supabase.from('job_descriptions').insert({
             id: stringToUUID(jdId),
             user_id: stringToUUID(userId),
             title: newJD.title,
@@ -219,7 +219,7 @@ export class InterviewService {
             raw_text: text,
             requirements: newJD.requirements,
             uploaded_at: newJD.uploadedAt
-          });
+          }));
         } catch (err) {
           console.warn('🔮 [InterviewService] Failed to insert job description in Supabase:', err);
         }
@@ -266,7 +266,7 @@ export class InterviewService {
       let resume = db.resumes.get(resumeId);
       if (!resume && supabase) {
         try {
-          const { data } = await supabase.from('resumes').select('*').eq('id', stringToUUID(resumeId)).maybeSingle();
+          const data = await unwrap(supabase.from('resumes').select('*').eq('id', stringToUUID(resumeId)).maybeSingle());
           if (data) {
             resume = {
               id: data.id,
@@ -292,7 +292,7 @@ export class InterviewService {
       let jd = jobDescriptionId ? db.jobDescriptions.get(jobDescriptionId) : null;
       if (!jd && jobDescriptionId && supabase) {
         try {
-          const { data } = await supabase.from('job_descriptions').select('*').eq('id', stringToUUID(jobDescriptionId)).maybeSingle();
+          const data = await unwrap(supabase.from('job_descriptions').select('*').eq('id', stringToUUID(jobDescriptionId)).maybeSingle());
           if (data) {
             jd = {
               id: data.id,
@@ -436,7 +436,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
 
       if (supabase) {
         try {
-          await supabase.from('interview_sessions').insert({
+          await unwrap(supabase.from('interview_sessions').insert({
             id: stringToUUID(sessionId),
             user_id: stringToUUID(userId),
             resume_id: stringToUUID(resumeId),
@@ -447,11 +447,11 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
             options: newSession.options,
             created_at: now,
             updated_at: now
-          });
+          }));
 
           for (let i = 0; i < questions.length; i++) {
             const q = questions[i];
-            await supabase.from('generated_questions').insert({
+            await unwrap(supabase.from('generated_questions').insert({
               id: stringToUUID(sessionId + '-' + q.id),
               session_id: stringToUUID(sessionId),
               question_text: q.questionText,
@@ -460,7 +460,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
               difficulty: q.difficulty,
               expected_concepts: q.expectedConcepts,
               order_index: i
-            });
+            }));
           }
         } catch (e) {
           console.warn('🔮 [InterviewService] Failed to insert session and questions in Supabase:', e);
@@ -547,16 +547,16 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
 
       if (supabase) {
         try {
-          await supabase.from('answers').upsert({
+          await unwrap(supabase.from('answers').upsert({
             id: stringToUUID(sessionId + '-ans-' + questionId),
             question_id: stringToUUID(sessionId + '-' + questionId),
             session_id: stringToUUID(sessionId),
             user_id: stringToUUID(userId),
             answer_text: answerText,
             submitted_at: now
-          });
+          }));
 
-          await supabase.from('evaluations').upsert({
+          await unwrap(supabase.from('evaluations').upsert({
             id: stringToUUID(evalId),
             question_id: stringToUUID(sessionId + '-' + questionId),
             session_id: stringToUUID(sessionId),
@@ -566,7 +566,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
             missing_points: evaluation.missingPoints,
             suggested_answer: evaluation.suggestedAnswer,
             evaluated_at: evaluation.evaluatedAt
-          });
+          }));
         } catch (e) {
           console.warn('🔮 [InterviewService] Failed to record answer/evaluation in Supabase:', e);
         }
@@ -590,13 +590,13 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
 
         if (supabase) {
           try {
-            await supabase.from('interview_sessions').update({
+            await unwrap(supabase.from('interview_sessions').update({
               status: 'completed',
               overall_score: session.coachingReport.overallScore,
               coaching_summary: session.coachingReport.summary,
               coaching_report: session.coachingReport,
               updated_at: now
-            }).eq('id', stringToUUID(sessionId));
+            }).eq('id', stringToUUID(sessionId)));
           } catch (e) {
             console.warn('🔮 [InterviewService] Failed to complete session in Supabase:', e);
           }
@@ -629,14 +629,14 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
 
           if (supabase) {
             try {
-              await supabase.from('learning_progress').upsert({
+              await unwrap(supabase.from('learning_progress').upsert({
                 user_id: stringToUUID(userId),
                 topic: q.topic,
                 confidence_score: newConf,
                 session_count: newCount,
                 last_practiced_at: now,
                 updated_at: now
-              }, { onConflict: 'user_id,topic' });
+              }, { onConflict: 'user_id,topic' }));
             } catch (e) {
               console.warn('🔮 [InterviewService] Failed to update learning_progress in Supabase:', e);
             }

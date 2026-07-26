@@ -1,38 +1,44 @@
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from "@opentelemetry/semantic-conventions";
-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 
+// Base OTLP endpoint (e.g. http://localhost:4318 for a local/self-hosted SigNoz collector,
+// or https://ingest.<region>.signoz.cloud:443 for SigNoz Cloud).
 const otlpBase = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318").replace(/\/$/, "");
-const tracesEndpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || `${otlpBase}/v1/traces`;
-const logsEndpoint = process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || `${otlpBase}/v1/logs`;
 
+// Traces and logs each hit their own OTLP signal path off the same base endpoint.
+// Explicit per-signal env vars (if set) win; otherwise we derive them from the base.
+const tracesEndpoint =
+  process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || `${otlpBase}/v1/traces`;
+const logsEndpoint =
+  process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || `${otlpBase}/v1/logs`;
+
+// SigNoz Cloud requires an ingestion key header; self-hosted collectors typically don't.
 const otlpHeaders = process.env.OTEL_EXPORTER_OTLP_HEADERS
-  ? Object.fromEntries(process.env.OTEL_EXPORTER_OTLP_HEADERS.split(",").map(p => {
-    const [k, ...rest] = p.split("="); return [k.trim(), rest.join("=").trim()];
-  }))
+  ? Object.fromEntries(
+      process.env.OTEL_EXPORTER_OTLP_HEADERS.split(",").map((pair) => {
+        const [key, ...rest] = pair.split("=");
+        return [key.trim(), rest.join("=").trim()];
+      })
+    )
   : undefined;
 
-const logExporter = new OTLPLogExporter({ url: logsEndpoint, headers: otlpHeaders });
-
-const otlpEndpoint =
-  process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
-  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
-  "http://localhost:4318/v1/traces";
-
-const exporterUrl = otlpEndpoint.endsWith("/v1/traces")
-  ? otlpEndpoint
-  : `${otlpEndpoint.replace(/\/$/, "")}/v1/traces`;
-
 const traceExporter = new OTLPTraceExporter({
-  url: exporterUrl,
+  url: tracesEndpoint,
+  headers: otlpHeaders,
+});
+
+const logExporter = new OTLPLogExporter({
+  url: logsEndpoint,
+  headers: otlpHeaders,
 });
 
 export const sdk = new NodeSDK({
@@ -42,6 +48,15 @@ export const sdk = new NodeSDK({
     [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || "development",
   }),
   traceExporter,
-  logRecordProcessor: new BatchLogRecordProcessor({ exporter: logExporter }), // note the object shape
+  // Batches log records and ships them to SigNoz via OTLP/HTTP, same as traces.
+  // NOTE: sdk-logs@0.221.x takes a single options object here (not (exporter, config)
+  // like older versions / the SigNoz docs snippet, which is pinned to sdk-logs@0.208.x).
+  logRecordProcessor: new BatchLogRecordProcessor({ exporter: logExporter }),
+  // getNodeAutoInstrumentations() already bundles @opentelemetry/instrumentation-pino,
+  // which patches pino so every log call automatically: (a) gets trace_id/span_id/trace_flags
+  // stamped on it for correlation, and (b) is forwarded into the LoggerProvider above,
+  // which is what actually gets it to SigNoz. This only works for logs that go through pino —
+  // see server/observability.ts, which routes all app logging (and intercepted console.*) through it.
   instrumentations: [getNodeAutoInstrumentations()],
 });
+

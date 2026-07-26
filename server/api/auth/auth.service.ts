@@ -1,7 +1,7 @@
 import { db, User, UserLogin, UserSession, PasswordResetToken, stringToUUID } from '../../db';
 import { hashPassword, verifyPassword } from './utils/crypto';
 import { generateJwtToken, generateTokens, verifyRefreshToken, revokeAccessToken, RefreshJwtPayload } from '../../middleware/jwt.middleware';
-import { getSupabaseClient } from '../../services/supabase';
+import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../middleware/error_handling';
 import { TotpService } from '../../services/totp';
 import crypto from 'crypto';
@@ -44,7 +44,7 @@ export class AuthService {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const { data } = await supabase.from('profiles').select('*').eq('email', mfaSession.email).maybeSingle();
+        const data = await unwrap(supabase.from('profiles').select('*').eq('email', mfaSession.email).maybeSingle());
         if (data) {
           user = {
             id: data.id,
@@ -105,13 +105,13 @@ export class AuthService {
     // Log in Supabase
     if (supabase) {
       try {
-        await supabase.from('user_logins').insert({
+        await unwrap(supabase.from('user_logins').insert({
           id: stringToUUID('log-' + Date.now() + '-' + user.id),
           user_id: stringToUUID(user.id),
           login_provider: '2fa',
           status: 'success',
           logged_in_at: new Date().toISOString()
-        });
+        }));
       } catch (e) {
         console.warn('🔮 [AuthService] Failed to record login:', e);
       }
@@ -125,7 +125,7 @@ export class AuthService {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const { data: existing } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        const existing = await unwrap(supabase.from('profiles').select('*').eq('email', email).maybeSingle());
         if (existing) {
           throw new ConflictError('User already exists');
         }
@@ -151,19 +151,19 @@ export class AuthService {
 
     if (supabase) {
       try {
-        await supabase.from('profiles').insert([{
+        await unwrap(supabase.from('profiles').insert([{
           id: userId,
           email,
           password_hash: passHash,
           name,
           role: 'user'
-        }]);
-        await supabase.from('user_logins').insert([{
+        }]));
+        await unwrap(supabase.from('user_logins').insert([{
           id: stringToUUID('log-' + Date.now() + '-' + email),
           user_id: userId,
           login_provider: 'email',
           status: 'success'
-        }]);
+        }]));
       } catch (sbErr) {
         console.warn('⚠️ [AuthService] Supabase profile insert error:', sbErr);
       }
@@ -179,7 +179,7 @@ export class AuthService {
 
     if (supabase) {
       try {
-        const { data } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        const data = await unwrap(supabase.from('profiles').select('*').eq('email', email).maybeSingle());
         if (data) {
           user = {
             id: data.id,
@@ -226,13 +226,13 @@ export class AuthService {
 
       if (supabase) {
         try {
-          await supabase.from('profiles').insert([{
+          await unwrap(supabase.from('profiles').insert([{
             id: userId,
             email,
             password_hash: passHash,
             name: user.name,
             role: 'user'
-          }]);
+          }]));
         } catch (e) {
           console.warn('🔮 [AuthService] Failed to auto-provision profile in Supabase:', e);
         }
@@ -245,12 +245,12 @@ export class AuthService {
 
     if (supabase) {
       try {
-        await supabase.from('user_logins').insert([{
+        await unwrap(supabase.from('user_logins').insert([{
           id: stringToUUID('log-' + Date.now() + '-' + email),
           user_id: stringToUUID(user.id),
           login_provider: 'email',
           status: 'success'
-        }]);
+        }]));
       } catch (e) {
         console.warn('🔮 [AuthService] Failed to log user login in Supabase:', e);
       }
@@ -266,7 +266,7 @@ export class AuthService {
 
     if (supabase) {
       try {
-        const { data } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        const data = await unwrap(supabase.from('profiles').select('*').eq('email', email).maybeSingle());
         if (data) {
           user = {
             id: data.id,
@@ -302,13 +302,13 @@ export class AuthService {
 
       if (supabase) {
         try {
-          await supabase.from('profiles').insert([{
+          await unwrap(supabase.from('profiles').insert([{
             id: userId,
             email,
             password_hash: '',
             name,
             role: 'user'
-          }]);
+          }]));
         } catch (e) {
           console.warn('🔮 [AuthService] Failed to insert google user in Supabase:', e);
         }
@@ -321,12 +321,12 @@ export class AuthService {
 
     if (supabase) {
       try {
-        await supabase.from('user_logins').insert([{
+        await unwrap(supabase.from('user_logins').insert([{
           id: stringToUUID('log-' + Date.now() + '-' + email),
           user_id: stringToUUID(user.id),
           login_provider: 'google',
           status: 'success'
-        }]);
+        }]));
       } catch (e) {
         console.warn('🔮 [AuthService] Failed to record google login in Supabase:', e);
       }
@@ -374,7 +374,7 @@ export class AuthService {
 
     if (supabase) {
       try {
-        const { data } = await supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle();
+        const data = await unwrap(supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle());
         if (data) {
           userObj = {
             id: data.id,
@@ -437,7 +437,7 @@ export class AuthService {
 
     if (supabase) {
       try {
-        const { data } = await supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle();
+        const data = await unwrap(supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle());
         if (data) {
           userObj = {
             id: data.id,
@@ -593,7 +593,7 @@ export class AuthService {
           created_at: new Date().toISOString(),
           last_active_at: new Date().toISOString()
         };
-        await supabase.from('user_sessions').insert(newSessRow);
+        await unwrap(supabase.from('user_sessions').insert(newSessRow));
         return [{
           id: newSessRow.id,
           userId,
@@ -667,7 +667,7 @@ export class AuthService {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const { data } = await supabase.from('refresh_tokens').select('*').eq('id', tokenId).maybeSingle();
+        const data = await unwrap(supabase.from('refresh_tokens').select('*').eq('id', tokenId).maybeSingle());
         if (data && data.revoked) {
           throw new UnauthorizedError('Refresh token has been revoked. Please sign in again.');
         }
@@ -699,7 +699,7 @@ export class AuthService {
     let user: User | undefined;
     if (supabase) {
       try {
-        const { data } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+        const data = await unwrap(supabase.from('profiles').select('*').eq('email', email).maybeSingle());
         if (data) {
           user = {
             id: data.id,
@@ -738,14 +738,14 @@ export class AuthService {
 
     if (supabase) {
       try {
-        await supabase.from('refresh_tokens').update({ revoked: true, replaced_by: newDecoded.tokenId }).eq('id', tokenId);
-        await supabase.from('refresh_tokens').insert({
+        await unwrap(supabase.from('refresh_tokens').update({ revoked: true, replaced_by: newDecoded.tokenId }).eq('id', tokenId));
+        await unwrap(supabase.from('refresh_tokens').insert({
           id: newDecoded.tokenId,
           user_id: stringToUUID(user.id),
           token: newRefreshToken,
           expires_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
           revoked: false
-        });
+        }));
       } catch (e) {}
     }
 
@@ -772,7 +772,7 @@ export class AuthService {
         }
         const supabase = getSupabaseClient();
         if (supabase) {
-          await supabase.from('refresh_tokens').update({ revoked: true }).eq('id', decoded.tokenId);
+          await unwrap(supabase.from('refresh_tokens').update({ revoked: true }).eq('id', decoded.tokenId));
         }
       } catch (err) {
         for (const [rtId, rt] of db.refreshTokens.entries()) {
@@ -798,8 +798,8 @@ export class AuthService {
       const supabase = getSupabaseClient();
       if (supabase) {
         try {
-          await supabase.from('refresh_tokens').update({ revoked: true }).eq('user_id', stringToUUID(userId));
-          await supabase.from('user_sessions').update({ is_active: false }).eq('user_id', stringToUUID(userId));
+          await unwrap(supabase.from('refresh_tokens').update({ revoked: true }).eq('user_id', stringToUUID(userId)));
+          await unwrap(supabase.from('user_sessions').update({ is_active: false }).eq('user_id', stringToUUID(userId)));
         } catch (e) {}
       }
     }
@@ -812,7 +812,7 @@ export class AuthService {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const { data } = await supabase.from('profiles').select('*').eq('email', cleanEmail).maybeSingle();
+        const data = await unwrap(supabase.from('profiles').select('*').eq('email', cleanEmail).maybeSingle());
         if (data) {
           user = {
             id: data.id,
@@ -852,14 +852,14 @@ export class AuthService {
 
     if (supabase) {
       try {
-        await supabase.from('password_resets').insert({
+        await unwrap(supabase.from('password_resets').insert({
           id: resetRecord.id,
           user_id: stringToUUID(user.id),
           email: cleanEmail,
           token,
           expires_at: new Date(expiresAt).toISOString(),
           used: false
-        });
+        }));
       } catch (e) {
         console.warn('🔮 [AuthService] Failed to record password reset in Supabase:', e);
       }

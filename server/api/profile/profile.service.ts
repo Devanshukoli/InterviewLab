@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../services/supabase';
+import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { db, User, UserSettings, stringToUUID } from '../../db';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../middleware/error_handling';
 import { encrypt, decrypt, verifyPassword } from '../auth/utils/crypto';
@@ -41,7 +41,7 @@ export class ProfileService {
     const supabase = getSupabaseClient();
     if (!user && supabase) {
       try {
-        const { data } = await supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle();
+        const data = await unwrap(supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle());
         if (data) {
           user = {
             id: data.id,
@@ -135,7 +135,7 @@ export class ProfileService {
       const supabase = getSupabaseClient();
       if (supabase) {
         try {
-          const { data } = await supabase.from('profiles').select('*').eq('email', newEmail).maybeSingle();
+          const data = await unwrap(supabase.from('profiles').select('*').eq('email', newEmail).maybeSingle());
           if (data && data.id !== stringToUUID(userId)) {
             throw new ConflictError('An account with this email address already exists.');
           }
@@ -342,17 +342,17 @@ export class ProfileService {
     if (supabase) {
       const uuid = stringToUUID(userId);
       try {
-        await supabase.from('resumes').delete().eq('user_id', uuid);
-        await supabase.from('job_descriptions').delete().eq('user_id', uuid);
-        await supabase.from('interview_sessions').delete().eq('user_id', uuid);
-        await supabase.from('refresh_tokens').delete().eq('user_id', uuid);
-        await supabase.from('user_sessions').delete().eq('user_id', uuid);
+        await unwrap(supabase.from('resumes').delete().eq('user_id', uuid));
+        await unwrap(supabase.from('job_descriptions').delete().eq('user_id', uuid));
+        await unwrap(supabase.from('interview_sessions').delete().eq('user_id', uuid));
+        await unwrap(supabase.from('refresh_tokens').delete().eq('user_id', uuid));
+        await unwrap(supabase.from('user_sessions').delete().eq('user_id', uuid));
         
-        await supabase.from('billing_history').update({ user_id: null }).eq('user_id', uuid);
-        await supabase.from('ai_usages').update({ user_id: null }).eq('user_id', uuid);
-        await supabase.from('user_logins').update({ user_id: null }).eq('user_id', uuid);
+        await unwrap(supabase.from('billing_history').update({ user_id: null }).eq('user_id', uuid));
+        await unwrap(supabase.from('ai_usages').update({ user_id: null }).eq('user_id', uuid));
+        await unwrap(supabase.from('user_logins').update({ user_id: null }).eq('user_id', uuid));
 
-        await supabase.from('profiles').delete().eq('id', uuid);
+        await unwrap(supabase.from('profiles').delete().eq('id', uuid));
       } catch (e) {
         console.warn('🔮 [ProfileService] Error cascading deletes in Supabase:', e);
       }
@@ -411,7 +411,7 @@ export class ProfileService {
       }
       if (supabase) {
         try {
-          await supabase.from('resumes').delete().eq('user_id', uuid);
+          await unwrap(supabase.from('resumes').delete().eq('user_id', uuid));
         } catch (err) {
           console.warn('🔮 Error clearing resumes in Supabase:', err);
         }
@@ -425,7 +425,7 @@ export class ProfileService {
       }
       if (supabase) {
         try {
-          await supabase.from('interview_sessions').delete().eq('user_id', uuid);
+          await unwrap(supabase.from('interview_sessions').delete().eq('user_id', uuid));
         } catch (err) {
           console.warn('🔮 Error clearing sessions in Supabase:', err);
         }
@@ -440,7 +440,7 @@ export class ProfileService {
       });
       if (supabase) {
         try {
-          await supabase.from('ai_usages').update({ user_id: null }).eq('user_id', uuid);
+          await unwrap(supabase.from('ai_usages').update({ user_id: null }).eq('user_id', uuid));
         } catch (err) {
           console.warn('🔮 Error clearing AI usage in Supabase:', err);
         }
@@ -455,7 +455,7 @@ export class ProfileService {
       });
       if (supabase) {
         try {
-          await supabase.from('user_logins').update({ user_id: null }).eq('user_id', uuid);
+          await unwrap(supabase.from('user_logins').update({ user_id: null }).eq('user_id', uuid));
         } catch (err) {
           console.warn('🔮 Error clearing logins in Supabase:', err);
         }
