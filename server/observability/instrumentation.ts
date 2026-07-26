@@ -3,8 +3,7 @@ import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
-import { MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { metrics } from "@opentelemetry/api";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
@@ -62,13 +61,6 @@ const resource = resourceFromAttributes({
   [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || "development",
 });
 
-export const meterProvider = new MeterProvider({
-  resource,
-  readers: [metricReader],
-});
-
-metrics.setGlobalMeterProvider(meterProvider);
-
 export const sdk = new NodeSDK({
   resource,
   traceExporter,
@@ -84,4 +76,3 @@ export const sdk = new NodeSDK({
   // see server/observability.ts, which routes all app logging (and intercepted console.*) through it.
   instrumentations: [getNodeAutoInstrumentations()],
 });
-
