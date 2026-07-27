@@ -1,12 +1,22 @@
 import { sdk } from "./observability/instrumentation";
 import { config } from "./config";
-import { logger } from "./observability";
+// IMPORTANT: do NOT statically import from "./observability" here. It transitively
+// imports `pino`, and @opentelemetry/instrumentation-pino can only patch `pino` the
+// *next* time it's require()'d after sdk.start() installs its hook — not retroactively.
+// A static top-level import resolves before sdk.start() ever runs (before this file's
+// own body executes at all), so pino would load unpatched and logs would never reach
+// SigNoz even though pino itself works fine locally. Import it dynamically instead,
+// same as we already do for "./index" below, so it loads strictly after sdk.start().
 
 async function bootstrap() {
   let server: any = null;
+  // Defaults to `console` so error handling before the real logger loads (or if sdk.start()
+  // itself throws) still has somewhere to write to.
+  let logger: Pick<Console, 'info' | 'warn' | 'error'> = console;
 
   try {
     await sdk.start();
+    ({ logger } = await import("./observability"));
     logger.info("[OpenTelemetry] SDK started successfully");
 
     const serverModule = await import("./index");

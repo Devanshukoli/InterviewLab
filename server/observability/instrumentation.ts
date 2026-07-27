@@ -1,3 +1,6 @@
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -67,7 +70,6 @@ export const sdk = new NodeSDK({
   resource,
   traceExporter,
   metricReader,
-  logRecordProcessor: batchLogProcessor,
   logRecordProcessors: [batchLogProcessor],
   // getNodeAutoInstrumentations() already bundles @opentelemetry/instrumentation-pino,
   // which patches pino so every log call automatically: (a) gets trace_id/span_id/trace_flags
@@ -76,4 +78,3 @@ export const sdk = new NodeSDK({
   // see server/observability.ts, which routes all app logging (and intercepted console.*) through it.
   instrumentations: [getNodeAutoInstrumentations()],
 });
-

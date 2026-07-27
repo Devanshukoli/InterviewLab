@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "InterviewLabs",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -15,7 +15,7 @@
     "@anthropic-ai/sdk": "^0.112.5",
     "@google/genai": "^2.4.0",
     "@opentelemetry/api": "^1.9.1",
-    "@opentelemetry/auto-instrumentations-node": "^0.78.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
     "@opentelemetry/resources": "^2.10.0",
