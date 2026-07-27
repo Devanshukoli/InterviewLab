@@ -1,5 +1,6 @@
 import { db, Resume, JobDescription, stringToUUID } from '../../db';
 import { getSupabaseClient, unwrap } from '../../services/supabase';
+import { logger } from '../../observability';
 
 export class HistoryService {
   static async getResumes(userId: string = 'usr-anonymous'): Promise<Resume[]> {
@@ -37,7 +38,7 @@ export class HistoryService {
           return resumes;
         }
       } catch (e) {
-        console.warn('🔮 [HistoryService] Failed to fetch resumes from Supabase:', e);
+        logger.warn('🔮 [HistoryService] Failed to fetch resumes from Supabase:', e);
       }
     }
 
@@ -51,7 +52,7 @@ export class HistoryService {
       try {
         await unwrap(supabase.from('resumes').delete().eq('id', stringToUUID(id)));
       } catch (e) {
-        console.warn('🔮 [HistoryService] Failed to delete resume in Supabase:', e);
+        logger.warn('🔮 [HistoryService] Failed to delete resume in Supabase:', e);
       }
     }
     return true;
@@ -87,7 +88,7 @@ export class HistoryService {
           return jds;
         }
       } catch (e) {
-        console.warn('🔮 [HistoryService] Failed to fetch job descriptions from Supabase:', e);
+        logger.warn('🔮 [HistoryService] Failed to fetch job descriptions from Supabase:', e);
       }
     }
 

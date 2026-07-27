@@ -1,5 +1,6 @@
 import { db, LearningProgress, stringToUUID } from '../../db';
 import { getSupabaseClient } from '../../services/supabase';
+import { logger } from '../../observability';
 
 export class ProgressService {
   static async getProgress(userId: string = 'usr-anonymous'): Promise<LearningProgress[]> {
@@ -26,10 +27,10 @@ export class ProgressService {
           return progressList;
         }
         if (error) {
-          console.warn('🔮 [ProgressService] learning_progress query returned an error:', error.message);
+          logger.warn('🔮 [ProgressService] learning_progress query returned an error:', error.message);
         }
       } catch (e) {
-        console.warn('🔮 [ProgressService] Failed to query learning_progress in Supabase:', e);
+        logger.warn('🔮 [ProgressService] Failed to query learning_progress in Supabase:', e);
       }
     }
 

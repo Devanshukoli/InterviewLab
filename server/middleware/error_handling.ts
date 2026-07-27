@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { logger } from '../observability';
 
 /**
  * Base Application Error class for operational errors.
@@ -139,9 +140,9 @@ export const globalErrorHandler = (
 
   // Log non-operational or 500 internal errors for debugging
   if (statusCode >= 500) {
-    console.error('💥 [GlobalErrorHandler] Server Error:', err);
+    logger.error('💥 [GlobalErrorHandler] Server Error:', err);
   } else {
-    console.warn(`⚠️ [GlobalErrorHandler] Handled operational error (${statusCode}): ${message}`);
+    logger.warn(`⚠️ [GlobalErrorHandler] Handled operational error (${statusCode}): ${message}`);
   }
 
   res.status(statusCode).json({

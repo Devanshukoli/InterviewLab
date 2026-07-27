@@ -5,6 +5,7 @@ import { config } from '../config';
 import { User, db, stringToUUID } from '../db';
 import { userContextStorage } from './userContext.middleware';
 import { getSupabaseClient } from '../services/supabase';
+import { logger } from '../observability';
 
 export interface JwtPayload {
   id: string;
@@ -168,10 +169,10 @@ export function generateTokens(user: User | { id: string; email: string; name: s
       try {
         const { error } = await supabase.from('user_sessions').insert(sessRow);
         if (error) {
-          console.warn('🔮 [generateTokens] Failed to insert session into Supabase:', error);
+          logger.warn('🔮 [generateTokens] Failed to insert session into Supabase:', error);
         }
       } catch (err) {
-        console.warn('🔮 [generateTokens] Error inserting session into Supabase:', err);
+        logger.warn('🔮 [generateTokens] Error inserting session into Supabase:', err);
       }
     })();
   }
@@ -203,12 +204,12 @@ export async function isSessionRevoked(userId: string, sessionId?: string): Prom
         .maybeSingle();
       
       if (error) {
-        console.warn('🔮 [isSessionRevoked] Error checking session from Supabase:', error);
+        logger.warn('🔮 [isSessionRevoked] Error checking session from Supabase:', error);
       } else if (data && data.is_active === false) {
         return true;
       }
     } catch (err) {
-      console.warn('🔮 [isSessionRevoked] Exception checking Supabase session:', err);
+      logger.warn('🔮 [isSessionRevoked] Exception checking Supabase session:', err);
     }
   }
 

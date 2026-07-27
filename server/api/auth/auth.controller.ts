@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { ProfileService } from '../profile/profile.service';
 import { BadRequestError, UnauthorizedError, catchAsync } from '../../middleware/error_handling';
 import { config } from '../../config';
+import { logger } from '../../observability';
 import {
   RegisterDto,
   LoginDto,
@@ -390,7 +391,7 @@ export class AuthController {
         </html>
       `);
     } catch (err: any) {
-      console.error('❌ [Google OAuth Callback Error]:', err.message);
+      logger.error('❌ [Google OAuth Callback Error]:', err.message);
       res.send(`
         <!DOCTYPE html>
         <html>
@@ -450,7 +451,7 @@ export class AuthController {
           return;
         }
       } catch (e) {
-        console.warn('🔮 [Google TokenInfo] Failed to verify credential:', e);
+        logger.warn('🔮 [Google TokenInfo] Failed to verify credential:', e);
       }
     }
 

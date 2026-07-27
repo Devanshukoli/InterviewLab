@@ -1,4 +1,5 @@
 import { db, PromptVersion } from '../db';
+import { logger } from '../observability';
 
 export interface PromptTemplateData {
   systemInstruction: string;
@@ -259,7 +260,7 @@ export class PromptService {
       const data = JSON.parse(active.template) as PromptTemplateData;
       return { version: active.version, data };
     } catch (err) {
-      console.warn(`🔮 Failed to parse prompt template JSON for ${agentName}. Falling back to default:`, err);
+      logger.warn(`🔮 Failed to parse prompt template JSON for ${agentName}. Falling back to default:`, err);
       return { version: 'v1.0', data: DEFAULT_PROMPTS[agentName] };
     }
   }

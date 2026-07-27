@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config';
 import { getCurrentUserKeys } from '../middleware/userContext.middleware';
-import { recordMetric } from '../observability';
+import { recordMetric, logger } from '../observability';
 
 export interface LLMProvider {
   name: string;
@@ -23,7 +23,7 @@ export class GeminiProvider implements LLMProvider {
     const userApiKey = userKeys?.gemini;
 
     if (userApiKey) {
-      console.log('🔮 [GeminiProvider] Using request-scoped User BYOK key');
+      logger.info('🔮 [GeminiProvider] Using request-scoped User BYOK key');
       return new GoogleGenAI({ apiKey: userApiKey });
     }
 
@@ -40,7 +40,7 @@ export class GeminiProvider implements LLMProvider {
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
     recordMetric.recordLLMRequest({ provider: this.name });
     try {
-      console.log('🔮 [GeminiProvider] Initiating content generation call...');
+      logger.info('🔮 [GeminiProvider] Initiating content generation call...');
       const client = this.getClient();
       const response = await client.models.generateContent({
         model: 'gemini-3.6-flash',
@@ -48,24 +48,24 @@ export class GeminiProvider implements LLMProvider {
         config: systemInstruction ? { systemInstruction } : undefined,
       });
 
-      console.log('🔮 [GeminiProvider] Call completed successfully.');
+      logger.info('🔮 [GeminiProvider] Call completed successfully.');
       return response.text || '';
     } catch (error: any) {
-      console.error('❌ [GeminiProvider] Error:', error);
+      logger.error('❌ [GeminiProvider] Error:', error);
       throw new Error(`Gemini Provider failed: ${error.message}`);
     }
   }
 
   async embed(text: string): Promise<number[]> {
     try {
-      console.log('🔮 [GeminiProvider] Generating embedding vector...');
+      logger.info('🔮 [GeminiProvider] Generating embedding vector...');
       const client = this.getClient();
       const response = await client.models.embedContent({
         model: 'text-embedding-004',
         contents: text,
       });
 
-      console.log('🔮 [GeminiProvider] Embedding generated.');
+      logger.info('🔮 [GeminiProvider] Embedding generated.');
       const res = response as any;
       if (res.embedding?.values) {
         return res.embedding.values;
@@ -74,7 +74,7 @@ export class GeminiProvider implements LLMProvider {
       }
       return [];
     } catch (error: any) {
-      console.error('❌ [GeminiProvider] Embedding error:', error);
+      logger.error('❌ [GeminiProvider] Embedding error:', error);
       throw new Error(`Gemini embedding failed: ${error.message}`);
     }
   }
@@ -92,7 +92,7 @@ export class OpenAIProvider implements LLMProvider {
     const userApiKey = userKeys?.openai;
 
     if (userApiKey) {
-      console.log('🔮 [OpenAIProvider] Using request-scoped User BYOK key');
+      logger.info('🔮 [OpenAIProvider] Using request-scoped User BYOK key');
       return new OpenAI({ apiKey: userApiKey });
     }
 
@@ -109,7 +109,7 @@ export class OpenAIProvider implements LLMProvider {
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
     recordMetric.recordLLMRequest({ provider: this.name });
     try {
-      console.log('🔮 [OpenAIProvider] Initiating Chat Completion call (gpt-4o)...');
+      logger.info('🔮 [OpenAIProvider] Initiating Chat Completion call (gpt-4o)...');
       const client = this.getClient();
       const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
 
@@ -123,27 +123,27 @@ export class OpenAIProvider implements LLMProvider {
         messages,
       });
 
-      console.log('🔮 [OpenAIProvider] Call completed successfully.');
+      logger.info('🔮 [OpenAIProvider] Call completed successfully.');
       return completion.choices[0]?.message?.content || '';
     } catch (error: any) {
-      console.error('❌ [OpenAIProvider] Error:', error);
+      logger.error('❌ [OpenAIProvider] Error:', error);
       throw new Error(`OpenAI Provider failed: ${error.message}`);
     }
   }
 
   async embed(text: string): Promise<number[]> {
     try {
-      console.log('🔮 [OpenAIProvider] Generating text embedding (text-embedding-3-small)...');
+      logger.info('🔮 [OpenAIProvider] Generating text embedding (text-embedding-3-small)...');
       const client = this.getClient();
       const response = await client.embeddings.create({
         model: 'text-embedding-3-small',
         input: text,
       });
 
-      console.log('🔮 [OpenAIProvider] Embedding generated.');
+      logger.info('🔮 [OpenAIProvider] Embedding generated.');
       return response.data[0]?.embedding || [];
     } catch (error: any) {
-      console.error('❌ [OpenAIProvider] Embedding error:', error);
+      logger.error('❌ [OpenAIProvider] Embedding error:', error);
       throw new Error(`OpenAI embedding failed: ${error.message}`);
     }
   }
@@ -161,7 +161,7 @@ export class AnthropicProvider implements LLMProvider {
     const userApiKey = userKeys?.anthropic;
 
     if (userApiKey) {
-      console.log('🔮 [AnthropicProvider] Using request-scoped User BYOK key');
+      logger.info('🔮 [AnthropicProvider] Using request-scoped User BYOK key');
       return new Anthropic({ apiKey: userApiKey });
     }
 
@@ -178,7 +178,7 @@ export class AnthropicProvider implements LLMProvider {
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
     recordMetric.recordLLMRequest({ provider: this.name });
     try {
-      console.log('🔮 [AnthropicProvider] Initiating Messages call (claude-3-5-sonnet-20241022)...');
+      logger.info('🔮 [AnthropicProvider] Initiating Messages call (claude-3-5-sonnet-20241022)...');
       const client = this.getClient();
       const response = await client.messages.create({
         model: 'claude-3-5-sonnet-20241022',
@@ -187,25 +187,25 @@ export class AnthropicProvider implements LLMProvider {
         messages: [{ role: 'user', content: prompt }],
       });
 
-      console.log('🔮 [AnthropicProvider] Call completed successfully.');
+      logger.info('🔮 [AnthropicProvider] Call completed successfully.');
       const firstBlock = response.content[0];
       if (firstBlock && firstBlock.type === 'text') {
         return firstBlock.text;
       }
       return '';
     } catch (error: any) {
-      console.error('❌ [AnthropicProvider] Error:', error);
+      logger.error('❌ [AnthropicProvider] Error:', error);
       throw new Error(`Anthropic Provider failed: ${error.message}`);
     }
   }
 
   async embed(text: string): Promise<number[]> {
-    console.warn('⚠️ [AnthropicProvider] Anthropic API does not offer native embeddings. Falling back to GeminiProvider for embeddings...');
+    logger.warn('⚠️ [AnthropicProvider] Anthropic API does not offer native embeddings. Falling back to GeminiProvider for embeddings...');
     try {
       const gemini = new GeminiProvider();
       return await gemini.embed(text);
     } catch (e: any) {
-      console.error('❌ [AnthropicProvider] Embedding fallback failed:', e);
+      logger.error('❌ [AnthropicProvider] Embedding fallback failed:', e);
       throw new Error(`Anthropic provider embedding fallback failed: ${e.message}`);
     }
   }
@@ -229,7 +229,7 @@ export function getLLMProvider(requestedProvider?: string): LLMProvider {
   const selected = providers[providerKey];
   
   if (!selected) {
-    console.warn(`⚠️ Provider '${providerKey}' not recognized. Falling back to Gemini provider.`);
+    logger.warn(`⚠️ Provider '${providerKey}' not recognized. Falling back to Gemini provider.`);
     return providers.gemini;
   }
 

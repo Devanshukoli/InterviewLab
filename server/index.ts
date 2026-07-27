@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { app } from './app';
 import { config } from './config';
-import { initOpenTelemetry } from './observability';
+import { initOpenTelemetry, logger } from './observability';
 
 const rootDir = process.cwd();
 
@@ -13,7 +13,7 @@ initOpenTelemetry();
 async function startServer() {
   if (config.isProd) {
     const distPath = path.join(rootDir, 'dist');
-    console.log(`📦 [Production Mode] Serving client assets from: ${distPath}`);
+    logger.info(`📦 [Production Mode] Serving client assets from: ${distPath}`);
     
     app.use(express.static(distPath));
     
@@ -25,7 +25,7 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   } else {
-    console.log('🚧 [Development Mode] Attaching Vite middleware for development.');
+    logger.info('🚧 [Development Mode] Attaching Vite middleware for development.');
     try {
       const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
@@ -34,14 +34,14 @@ async function startServer() {
       });
       app.use(vite.middlewares);
     } catch (err) {
-      console.warn('⚠️ Could not attach Vite middleware:', err);
+      logger.warn('⚠️ Could not attach Vite middleware:', err);
     }
   }
 
   // Start the cohesive server
   const server = app.listen(config.port, '0.0.0.0', () => {
-    console.log(`🚀 [InterviewOps Backend] Listening on http://0.0.0.0:${config.port}`);
-    console.log(`🔬 [Observability] Endpoint http://0.0.0.0:${config.port}/api/telemetry is live.`);
+    logger.info(`🚀 [InterviewOps Backend] Listening on http://0.0.0.0:${config.port}`);
+    logger.info(`🔬 [Observability] Endpoint http://0.0.0.0:${config.port}/api/telemetry is live.`);
   });
 
   return server;

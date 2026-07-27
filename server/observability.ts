@@ -16,8 +16,51 @@ import { PromptService } from './services/prompt.service';
  */
 export const pinoLogger = pino({
   level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
-  base: { service: process.env.OTEL_SERVICE_NAME || 'interviewops-api' },
+  base: {
+    'service.name': process.env.OTEL_SERVICE_NAME || 'interviewops-api',
+    service: process.env.OTEL_SERVICE_NAME || 'interviewops-api'
+  },
   timestamp: pino.stdTimeFunctions.isoTime,
+  mixin() {
+    const currentStore = logContextStore.getStore();
+    const activeOtelSpan = trace.getActiveSpan();
+    const activeSpanContext = activeOtelSpan?.spanContext();
+
+    const traceId = activeSpanContext?.traceId || currentStore?.traceId;
+    const spanId = activeSpanContext?.spanId || currentStore?.spanId;
+    const interviewId = currentStore?.interviewId || (activeOtelSpan as any)?.attributes?.['interview.id'] || process.env.DEFAULT_INTERVIEW_ID || 'intv-default';
+    const agentName = currentStore?.agentName || (activeOtelSpan as any)?.attributes?.['agentName'] || (activeOtelSpan as any)?.attributes?.['agent.name'] || 'system';
+    const userId = currentStore?.userId || (activeOtelSpan as any)?.attributes?.['user.id'] || process.env.DEFAULT_USER_ID || 'usr-anonymous';
+    const llmProvider = currentStore?.llmProvider || (activeOtelSpan as any)?.attributes?.['llm.provider'] || process.env.LLM_PROVIDER || 'gemini';
+    const llmModel = currentStore?.llmModel || (activeOtelSpan as any)?.attributes?.['llm.model'] || process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    const serviceName = process.env.OTEL_SERVICE_NAME || 'interviewops-api';
+
+    const attrs: Record<string, any> = {
+      'service.name': serviceName,
+      service: serviceName,
+      'agent.name': agentName,
+      agentName,
+      'interview.id': interviewId,
+      interviewId,
+      'user.id': userId,
+      userId,
+      'llm.provider': llmProvider,
+      llmProvider,
+      'llm.model': llmModel,
+      llmModel,
+    };
+
+    if (traceId) {
+      attrs.traceId = traceId;
+      attrs.trace_id = traceId;
+    }
+    if (spanId) {
+      attrs.spanId = spanId;
+      attrs.span_id = spanId;
+    }
+
+    return attrs;
+  }
 });
 
 const meter = metrics.getMeter(process.env.OTEL_SERVICE_NAME || 'interviewops-api');
@@ -112,6 +155,9 @@ export interface LogContext {
   interviewId: string;
   agentName: string;
   startTime: number;
+  userId?: string;
+  llmProvider?: string;
+  llmModel?: string;
 }
 
 export const logContextStore = new AsyncLocalStorage<LogContext>();
@@ -220,6 +266,31 @@ export function sanitizeLogData(value: any, depth = 0): any {
   return value;
 }
 
+function formatLogArgs(args: any[]): { message: string; meta: Record<string, any> } {
+  if (args.length === 0) return { message: '', meta: {} };
+
+  const first = args[0];
+  let message = typeof first === 'string' ? first : (typeof first === 'object' && first !== null ? (first.message || JSON.stringify(sanitizeLogData(first))) : String(first));
+  let meta: Record<string, any> = {};
+
+  if (args.length === 2 && typeof args[1] === 'object' && args[1] !== null && !(args[1] instanceof Error)) {
+    meta = args[1];
+  } else if (args.length > 1) {
+    const extraArgs = args.slice(1).map(arg => {
+      if (arg instanceof Error) {
+        return { message: arg.message, stack: arg.stack, name: arg.name };
+      }
+      if (typeof arg === 'object' && arg !== null) {
+        return sanitizeLogData(arg);
+      }
+      return String(arg);
+    });
+    meta = { details: extraArgs.length === 1 ? extraArgs[0] : extraArgs };
+  }
+
+  return { message, meta };
+}
+
 export function logStructured(
   level: string,
   message: string,
@@ -229,14 +300,35 @@ export function logStructured(
   const activeOtelSpan = trace.getActiveSpan();
   const activeSpanContext = activeOtelSpan?.spanContext();
 
-  const traceId = meta.traceId || currentStore?.traceId || activeSpanContext?.traceId || 'trace-none';
-  const spanId = meta.spanId || currentStore?.spanId || activeSpanContext?.spanId || 'span-none';
-  const interviewId = meta.interviewId || currentStore?.interviewId || (activeOtelSpan as any)?.attributes?.['interview.id'] || process.env.DEFAULT_INTERVIEW_ID || 'intv-default';
-  const agentName = meta.agentName || currentStore?.agentName || (activeOtelSpan as any)?.attributes?.['agentName'] || 'system';
+  const traceId = String(meta.traceId || meta.trace_id || activeSpanContext?.traceId || currentStore?.traceId || 'trace-none');
+  const spanId = String(meta.spanId || meta.span_id || activeSpanContext?.spanId || currentStore?.spanId || 'span-none');
+  const interviewId = String(meta['interview.id'] || meta.interviewId || currentStore?.interviewId || (activeOtelSpan as any)?.attributes?.['interview.id'] || process.env.DEFAULT_INTERVIEW_ID || 'intv-default');
+  const agentName = String(meta['agent.name'] || meta.agentName || currentStore?.agentName || (activeOtelSpan as any)?.attributes?.['agentName'] || (activeOtelSpan as any)?.attributes?.['agent.name'] || 'system');
+  const userId = String(meta['user.id'] || meta.userId || currentStore?.userId || (activeOtelSpan as any)?.attributes?.['user.id'] || process.env.DEFAULT_USER_ID || 'usr-anonymous');
+  const llmProvider = String(meta['llm.provider'] || meta.llmProvider || currentStore?.llmProvider || (activeOtelSpan as any)?.attributes?.['llm.provider'] || process.env.LLM_PROVIDER || 'gemini');
+  const llmModel = String(meta['llm.model'] || meta.llmModel || currentStore?.llmModel || (activeOtelSpan as any)?.attributes?.['llm.model'] || process.env.GEMINI_MODEL || 'gemini-3.6-flash');
+  const serviceName = process.env.OTEL_SERVICE_NAME || 'interviewops-api';
   const startTime = currentStore?.startTime || Date.now();
   const requestDuration = typeof meta.requestDuration === 'number' ? meta.requestDuration : (Date.now() - startTime);
 
-  const { traceId: _t, spanId: _s, interviewId: _i, agentName: _a, requestDuration: _d, ...extraMeta } = meta;
+  const {
+    traceId: _t,
+    trace_id: _t2,
+    spanId: _s,
+    span_id: _s2,
+    interviewId: _i,
+    'interview.id': _i2,
+    agentName: _a,
+    'agent.name': _a2,
+    userId: _u,
+    'user.id': _u2,
+    llmProvider: _lp,
+    'llm.provider': _lp2,
+    llmModel: _lm,
+    'llm.model': _lm2,
+    requestDuration: _d,
+    ...extraMeta
+  } = meta;
 
   const sanitizedMessage = typeof message === 'string' ? sanitizeLogData(message) : message;
   const sanitizedMeta = sanitizeLogData(extraMeta);
@@ -245,30 +337,43 @@ export function logStructured(
     timestamp: new Date().toISOString(),
     level,
     message: String(sanitizedMessage),
-    traceId: String(traceId),
-    spanId: String(spanId),
-    interviewId: String(interviewId),
-    agentName: String(agentName),
+    traceId,
+    spanId,
+    interviewId,
+    agentName,
     requestDuration,
+    'service.name': serviceName,
+    'agent.name': agentName,
+    'interview.id': interviewId,
+    'user.id': userId,
+    'llm.provider': llmProvider,
+    'llm.model': llmModel,
     ...sanitizedMeta
   };
 
-  // pino's own level names are a superset of ours ('debug' included); anything unrecognized
-  // (e.g. a stray custom level) falls back to 'info' so we never throw from a logging call.
   const pinoLevel = (['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const).includes(level as any)
     ? (level as pino.Level)
     : 'info';
 
-  // Pass fields as the first arg (pino merges them into the JSON line) and the message second.
-  // This is also the call shape @opentelemetry/instrumentation-pino hooks into to attach
-  // trace_id/span_id/trace_flags and forward the record to SigNoz.
   pinoLogger[pinoLevel](
     {
-      traceId: logEntry.traceId,
-      spanId: logEntry.spanId,
-      interviewId: logEntry.interviewId,
-      agentName: logEntry.agentName,
-      requestDuration: logEntry.requestDuration,
+      traceId,
+      trace_id: traceId,
+      spanId,
+      span_id: spanId,
+      'service.name': serviceName,
+      service: serviceName,
+      'agent.name': agentName,
+      agentName,
+      'interview.id': interviewId,
+      interviewId,
+      'user.id': userId,
+      userId,
+      'llm.provider': llmProvider,
+      llmProvider,
+      'llm.model': llmModel,
+      llmModel,
+      requestDuration,
       ...sanitizedMeta,
     },
     logEntry.message
@@ -280,11 +385,26 @@ export function logStructured(
 }
 
 export const logger = {
-  info: (message: string, meta: Record<string, any> = {}) => logStructured('info', message, meta),
-  warn: (message: string, meta: Record<string, any> = {}) => logStructured('warn', message, meta),
-  error: (message: string, meta: Record<string, any> = {}) => logStructured('error', message, meta),
-  debug: (message: string, meta: Record<string, any> = {}) => logStructured('debug', message, meta),
-  log: (level: string, message: string, meta: Record<string, any> = {}) => logStructured(level, message, meta)
+  info: (...args: any[]) => {
+    const { message, meta } = formatLogArgs(args);
+    return logStructured('info', message, meta);
+  },
+  warn: (...args: any[]) => {
+    const { message, meta } = formatLogArgs(args);
+    return logStructured('warn', message, meta);
+  },
+  error: (...args: any[]) => {
+    const { message, meta } = formatLogArgs(args);
+    return logStructured('error', message, meta);
+  },
+  debug: (...args: any[]) => {
+    const { message, meta } = formatLogArgs(args);
+    return logStructured('debug', message, meta);
+  },
+  log: (level: string, ...args: any[]) => {
+    const { message, meta } = formatLogArgs(args);
+    return logStructured(level, message, meta);
+  }
 };
 
 let consoleIntercepted = false;
@@ -293,24 +413,24 @@ export function setupConsoleInterceptor() {
   if (consoleIntercepted) return;
   consoleIntercepted = true;
 
-  // NOTE: logStructured() no longer writes to console at all (it writes via pinoLogger,
-  // which owns its own output stream) — so there's no risk of console.log calling itself
-  // recursively here anymore. Any raw console.* call anywhere in the app (agents, libraries,
-  // etc.) gets funneled through the same pino instance so it's sanitized, trace-correlated,
-  // and shipped to SigNoz just like everything logged via `logger.*` directly.
   console.log = (...args: any[]) => {
-    const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(sanitizeLogData(a)) : String(a))).join(' ');
-    logStructured('info', msg);
+    const { message, meta } = formatLogArgs(args);
+    logStructured('info', message, meta);
   };
 
   console.warn = (...args: any[]) => {
-    const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(sanitizeLogData(a)) : String(a))).join(' ');
-    logStructured('warn', msg);
+    const { message, meta } = formatLogArgs(args);
+    logStructured('warn', message, meta);
   };
 
   console.error = (...args: any[]) => {
-    const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(sanitizeLogData(a)) : String(a))).join(' ');
-    logStructured('error', msg);
+    const { message, meta } = formatLogArgs(args);
+    logStructured('error', message, meta);
+  };
+
+  console.debug = (...args: any[]) => {
+    const { message, meta } = formatLogArgs(args);
+    logStructured('debug', message, meta);
   };
 }
 

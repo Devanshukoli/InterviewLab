@@ -1,5 +1,6 @@
 import { db, BillingHistory, UserSubscription, stringToUUID } from '../../db';
 import { getSupabaseClient } from '../../services/supabase';
+import { logger } from '../../observability';
 
 export class BillingService {
   static async getHistory(userId: string): Promise<BillingHistory[]> {
@@ -27,10 +28,10 @@ export class BillingService {
           }));
         }
         if (error) {
-          console.warn('🔮 [BillingService] billing_history query returned an error:', error.message);
+          logger.warn('🔮 [BillingService] billing_history query returned an error:', error.message);
         }
       } catch (e) {
-        console.warn('🔮 [BillingService] Failed to query billing_history in Supabase:', e);
+        logger.warn('🔮 [BillingService] Failed to query billing_history in Supabase:', e);
       }
     }
 
@@ -62,10 +63,10 @@ export class BillingService {
           return sub;
         }
         if (error) {
-          console.warn('🔮 [BillingService] user_subscriptions query returned an error:', error.message);
+          logger.warn('🔮 [BillingService] user_subscriptions query returned an error:', error.message);
         }
       } catch (e) {
-        console.warn('🔮 [BillingService] Failed to query user_subscriptions in Supabase:', e);
+        logger.warn('🔮 [BillingService] Failed to query user_subscriptions in Supabase:', e);
       }
     }
 

@@ -2,6 +2,7 @@ import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { db, User, UserSettings, stringToUUID } from '../../db';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../middleware/error_handling';
 import { encrypt, decrypt, verifyPassword } from '../auth/utils/crypto';
+import { logger } from '../../observability';
 
 export interface UpdateProfileDTO {
   name?: string;
@@ -55,7 +56,7 @@ export class ProfileService {
           db.users.set(user.email, user);
         }
       } catch (e) {
-        console.warn('🔮 [ProfileService] Failed to fetch profile from Supabase:', e);
+        logger.warn('🔮 [ProfileService] Failed to fetch profile from Supabase:', e);
       }
     }
 
@@ -224,7 +225,7 @@ export class ProfileService {
           })
           .eq('id', stringToUUID(userId));
       } catch (e) {
-        console.warn('🔮 [ProfileService] Failed to update profile in Supabase:', e);
+        logger.warn('🔮 [ProfileService] Failed to update profile in Supabase:', e);
       }
     }
 
@@ -354,7 +355,7 @@ export class ProfileService {
 
         await unwrap(supabase.from('profiles').delete().eq('id', uuid));
       } catch (e) {
-        console.warn('🔮 [ProfileService] Error cascading deletes in Supabase:', e);
+        logger.warn('🔮 [ProfileService] Error cascading deletes in Supabase:', e);
       }
     }
   }
@@ -413,7 +414,7 @@ export class ProfileService {
         try {
           await unwrap(supabase.from('resumes').delete().eq('user_id', uuid));
         } catch (err) {
-          console.warn('🔮 Error clearing resumes in Supabase:', err);
+          logger.warn('🔮 Error clearing resumes in Supabase:', err);
         }
       }
     } else if (category === 'sessions') {
@@ -427,7 +428,7 @@ export class ProfileService {
         try {
           await unwrap(supabase.from('interview_sessions').delete().eq('user_id', uuid));
         } catch (err) {
-          console.warn('🔮 Error clearing sessions in Supabase:', err);
+          logger.warn('🔮 Error clearing sessions in Supabase:', err);
         }
       }
     } else if (category === 'usages') {
@@ -442,7 +443,7 @@ export class ProfileService {
         try {
           await unwrap(supabase.from('ai_usages').update({ user_id: null }).eq('user_id', uuid));
         } catch (err) {
-          console.warn('🔮 Error clearing AI usage in Supabase:', err);
+          logger.warn('🔮 Error clearing AI usage in Supabase:', err);
         }
       }
     } else if (category === 'logins') {
@@ -457,7 +458,7 @@ export class ProfileService {
         try {
           await unwrap(supabase.from('user_logins').update({ user_id: null }).eq('user_id', uuid));
         } catch (err) {
-          console.warn('🔮 Error clearing logins in Supabase:', err);
+          logger.warn('🔮 Error clearing logins in Supabase:', err);
         }
       }
     } else if (category === 'cache') {

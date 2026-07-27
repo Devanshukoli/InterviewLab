@@ -11,7 +11,7 @@ import {
   PipelineInput,
   InterviewPipelineResult
 } from '../../src/shared/types';
-import { tracer, getAITelemetryAttributes, recordMetric } from '../observability';
+import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../observability';
 import { AppError } from '../middleware/error_handling';
 
 export type { PipelineInput, InterviewPipelineResult };
@@ -75,7 +75,7 @@ export class InterviewPipelineService {
         throw new InterviewPipelineError('Resume text content is required to run the interview pipeline', 400);
       }
 
-      console.log('🚀 [InterviewPipelineService] Starting Step 1: ResumeAgent...');
+      logger.info('🚀 [InterviewPipelineService] Starting Step 1: ResumeAgent...');
       const resumeSpan = tracer.startSpan('ResumeAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let resumeAnalysis: ResumeAnalysisResult;
       try {
@@ -86,7 +86,7 @@ export class InterviewPipelineService {
         throw resumeErr;
       }
 
-      console.log('🚀 [InterviewPipelineService] Starting Step 2: JDAgent...');
+      logger.info('🚀 [InterviewPipelineService] Starting Step 2: JDAgent...');
       const jdSpan = tracer.startSpan('JDAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let jdAnalysis: JDAnalysisResult | null = null;
       try {
@@ -97,7 +97,7 @@ export class InterviewPipelineService {
         throw jdErr;
       }
 
-      console.log('🚀 [InterviewPipelineService] Starting Step 3: GapAgent...');
+      logger.info('🚀 [InterviewPipelineService] Starting Step 3: GapAgent...');
       const gapSpan = tracer.startSpan('GapAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let gapAnalysis: GapAnalysisResult;
       try {
@@ -108,7 +108,7 @@ export class InterviewPipelineService {
         throw gapErr;
       }
 
-      console.log('🚀 [InterviewPipelineService] Starting Step 4: QuestionAgent...');
+      logger.info('🚀 [InterviewPipelineService] Starting Step 4: QuestionAgent...');
       const questionSpan = tracer.startSpan('QuestionAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let questionResult: QuestionGenerationResult;
       try {
@@ -140,7 +140,7 @@ export class InterviewPipelineService {
       };
     } catch (err: any) {
       rootSpan.recordException(err);
-      console.error('❌ [InterviewPipelineService] Pipeline execution halted due to error:', err.message || err);
+      logger.error('❌ [InterviewPipelineService] Pipeline execution halted due to error:', err.message || err);
       throw err;
     }
   }

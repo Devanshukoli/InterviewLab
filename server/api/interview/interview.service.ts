@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { db, InterviewSession, GeneratedQuestion, Evaluation, Resume, JobDescription, stringToUUID } from '../../db';
-import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
+import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../../observability';
 import { getLLMProvider } from '../../services/llm';
 import { NotFoundError } from '../../middleware/error_handling';
 import { getSupabaseClient, unwrap } from '../../services/supabase';
@@ -27,6 +27,23 @@ export class InterviewService {
     if (textLower.includes('graphql')) skills.push('GraphQL');
     if (skills.length === 0) skills.push('System Architecture', 'Software Engineering', 'Problem Solving');
     return skills;
+  }
+
+  static sanitizeQuestionType(type?: string): 'technical' | 'behavioral' | 'situational' | 'background' {
+    if (!type) return 'technical';
+    const lower = type.toLowerCase().trim();
+    if (lower === 'behavioral' || lower.includes('behavior')) return 'behavioral';
+    if (lower === 'situational' || lower.includes('situation')) return 'situational';
+    if (lower === 'background' || lower.includes('background') || lower.includes('resume')) return 'background';
+    return 'technical';
+  }
+
+  static sanitizeDifficulty(diff?: string): 'easy' | 'medium' | 'hard' {
+    if (!diff) return 'medium';
+    const lower = diff.toLowerCase().trim();
+    if (lower === 'easy' || lower.includes('easy') || lower.includes('entry') || lower.includes('junior')) return 'easy';
+    if (lower === 'hard' || lower.includes('hard') || lower.includes('senior') || lower.includes('lead')) return 'hard';
+    return 'medium';
   }
 
   static async uploadResume(
@@ -81,7 +98,7 @@ export class InterviewService {
             updated_at: newResume.updatedAt
           }));
         } catch (err) {
-          console.warn('🔮 [InterviewService] Resume insert error in Supabase:', err);
+          logger.warn('🔮 [InterviewService] Resume insert error in Supabase:', err);
         }
       }
 
@@ -132,7 +149,7 @@ export class InterviewService {
             };
           }
         } catch (e) {
-          console.warn('🔮 [InterviewService] Failed to load resume from Supabase:', e);
+          logger.warn('🔮 [InterviewService] Failed to load resume from Supabase:', e);
         }
       }
 
@@ -174,7 +191,7 @@ export class InterviewService {
             updated_at: now
           }));
         } catch (err) {
-          console.warn('🔮 [InterviewService] Resume update error in Supabase:', err);
+          logger.warn('🔮 [InterviewService] Resume update error in Supabase:', err);
         }
       }
 
@@ -221,7 +238,7 @@ export class InterviewService {
             uploaded_at: newJD.uploadedAt
           }));
         } catch (err) {
-          console.warn('🔮 [InterviewService] Failed to insert job description in Supabase:', err);
+          logger.warn('🔮 [InterviewService] Failed to insert job description in Supabase:', err);
         }
       }
 
@@ -281,7 +298,7 @@ export class InterviewService {
             db.resumes.set(resumeId, resume);
           }
         } catch (e) {
-          console.warn('🔮 [InterviewService] Error fetching resume from Supabase:', e);
+          logger.warn('🔮 [InterviewService] Error fetching resume from Supabase:', e);
         }
       }
 
@@ -306,7 +323,7 @@ export class InterviewService {
             db.jobDescriptions.set(jobDescriptionId, jd);
           }
         } catch (e) {
-          console.warn('🔮 [InterviewService] Error fetching job description from Supabase:', e);
+          logger.warn('🔮 [InterviewService] Error fetching job description from Supabase:', e);
         }
       }
 
@@ -362,7 +379,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
         }
       } catch (aiErr) {
         recordMetric.recordLLMRequestFailure({ agent: 'question-agent', 'llm.attempt': 1, error: (aiErr as any)?.message || String(aiErr) });
-        console.warn('🔮 [InterviewService] LLM provider question generation fallback:', aiErr);
+        logger.warn('🔮 [InterviewService] LLM provider question generation fallback:', aiErr);
       }
 
       if (questions.length === 0) {
@@ -455,15 +472,15 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
               id: stringToUUID(sessionId + '-' + q.id),
               session_id: stringToUUID(sessionId),
               question_text: q.questionText,
-              type: q.type,
-              topic: q.topic,
-              difficulty: q.difficulty,
+              type: InterviewService.sanitizeQuestionType(q.type),
+              topic: q.topic || q.type || 'General',
+              difficulty: InterviewService.sanitizeDifficulty(q.difficulty),
               expected_concepts: q.expectedConcepts,
               order_index: i
             }));
           }
         } catch (e) {
-          console.warn('🔮 [InterviewService] Failed to insert session and questions in Supabase:', e);
+          logger.warn('🔮 [InterviewService] Failed to insert session and questions in Supabase:', e);
         }
       }
 
@@ -527,7 +544,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
         suggestedAnswer = evalResult.idealAnswer || suggestedAnswer;
         aiEvalSuccess = true;
       } catch (aiErr) {
-        console.warn('🔮 [InterviewService] EvaluationAgent call failed, using baseline evaluator:', aiErr);
+        logger.warn('🔮 [InterviewService] EvaluationAgent call failed, using baseline evaluator:', aiErr);
       }
 
       const evalId = 'ev-' + Math.random().toString(36).substr(2, 9);
@@ -572,7 +589,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
             evaluated_at: evaluation.evaluatedAt
           }));
         } catch (e) {
-          console.warn('🔮 [InterviewService] Failed to record answer/evaluation in Supabase:', e);
+          logger.warn('🔮 [InterviewService] Failed to record answer/evaluation in Supabase:', e);
         }
       }
 
@@ -602,7 +619,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
               updated_at: now
             }).eq('id', stringToUUID(sessionId)));
           } catch (e) {
-            console.warn('🔮 [InterviewService] Failed to complete session in Supabase:', e);
+            logger.warn('🔮 [InterviewService] Failed to complete session in Supabase:', e);
           }
         }
 
@@ -642,7 +659,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
                 updated_at: now
               }, { onConflict: 'user_id,topic' }));
             } catch (e) {
-              console.warn('🔮 [InterviewService] Failed to update learning_progress in Supabase:', e);
+              logger.warn('🔮 [InterviewService] Failed to update learning_progress in Supabase:', e);
             }
           }
         }
@@ -685,7 +702,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
           return sessions;
         }
       } catch (e) {
-        console.warn('🔮 [InterviewService] Failed to fetch session history from Supabase:', e);
+        logger.warn('🔮 [InterviewService] Failed to fetch session history from Supabase:', e);
       }
     }
 
@@ -778,7 +795,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
           return session;
         }
       } catch (e) {
-        console.warn('🔮 [InterviewService] Failed to load session by ID from Supabase:', e);
+        logger.warn('🔮 [InterviewService] Failed to load session by ID from Supabase:', e);
       }
     }
 

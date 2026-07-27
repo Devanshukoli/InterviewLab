@@ -3,6 +3,7 @@ import { InterviewService } from './interview.service';
 import { BadRequestError, NotFoundError, catchAsync } from '../../middleware/error_handling';
 import path from 'path';
 import { createRequire } from 'module';
+import { logger } from '../../observability';
 import {
   UploadResumeDto,
   UploadJobDescriptionDto,
@@ -26,7 +27,7 @@ async function extractTextFromBuffer(buffer: Buffer, mimetype: string, filename:
         return parsed.text;
       }
     } catch (err) {
-      console.error('🔮 [PDF Extraction] pdf-parse failed, falling back to basic extraction:', err);
+      logger.error('🔮 [PDF Extraction] pdf-parse failed, falling back to basic extraction:', err);
     }
   }
 

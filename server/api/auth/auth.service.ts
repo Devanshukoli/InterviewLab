@@ -5,6 +5,7 @@ import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../middleware/error_handling';
 import { TotpService } from '../../services/totp';
 import crypto from 'crypto';
+import { logger } from '../../observability';
 
 interface MfaSession {
   mfaToken: string;
@@ -59,7 +60,7 @@ export class AuthService {
           db.users.set(mfaSession.email, user);
         }
       } catch (err) {
-        console.warn('🔮 [AuthService] Failed to load user profile during 2FA:', err);
+        logger.warn('🔮 [AuthService] Failed to load user profile during 2FA:', err);
       }
     }
 
@@ -90,7 +91,7 @@ export class AuthService {
               .update({ backup_codes: user.backupCodes })
               .eq('email', user.email);
           } catch (e) {
-            console.warn('🔮 [AuthService] Failed to update backup codes:', e);
+            logger.warn('🔮 [AuthService] Failed to update backup codes:', e);
           }
         }
       }
@@ -113,7 +114,7 @@ export class AuthService {
           logged_in_at: new Date().toISOString()
         }));
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to record login:', e);
+        logger.warn('🔮 [AuthService] Failed to record login:', e);
       }
     }
 
@@ -165,7 +166,7 @@ export class AuthService {
           status: 'success'
         }]));
       } catch (sbErr) {
-        console.warn('⚠️ [AuthService] Supabase profile insert error:', sbErr);
+        logger.warn('⚠️ [AuthService] Supabase profile insert error:', sbErr);
       }
     }
 
@@ -194,7 +195,7 @@ export class AuthService {
           db.users.set(email, user);
         }
       } catch (sbErr) {
-        console.warn('⚠️ [AuthService] Supabase profile fetch failed:', sbErr);
+        logger.warn('⚠️ [AuthService] Supabase profile fetch failed:', sbErr);
       }
     }
 
@@ -234,7 +235,7 @@ export class AuthService {
             role: 'user'
           }]));
         } catch (e) {
-          console.warn('🔮 [AuthService] Failed to auto-provision profile in Supabase:', e);
+          logger.warn('🔮 [AuthService] Failed to auto-provision profile in Supabase:', e);
         }
       }
     }
@@ -252,7 +253,7 @@ export class AuthService {
           status: 'success'
         }]));
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to log user login in Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to log user login in Supabase:', e);
       }
     }
 
@@ -281,7 +282,7 @@ export class AuthService {
           db.users.set(email, user);
         }
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to fetch google profile from Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to fetch google profile from Supabase:', e);
       }
     }
 
@@ -310,7 +311,7 @@ export class AuthService {
             role: 'user'
           }]));
         } catch (e) {
-          console.warn('🔮 [AuthService] Failed to insert google user in Supabase:', e);
+          logger.warn('🔮 [AuthService] Failed to insert google user in Supabase:', e);
         }
       }
     }
@@ -328,7 +329,7 @@ export class AuthService {
           status: 'success'
         }]));
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to record google login in Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to record google login in Supabase:', e);
       }
     }
 
@@ -358,7 +359,7 @@ export class AuthService {
           }));
         }
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to fetch logins from Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to fetch logins from Supabase:', e);
       }
     }
     return db.userLogins.filter(l => l.userId === userId);
@@ -385,7 +386,7 @@ export class AuthService {
           };
         }
       } catch (e) {
-        console.warn('🔮 [AuthService] Error fetching profile for password change:', e);
+        logger.warn('🔮 [AuthService] Error fetching profile for password change:', e);
       }
     }
 
@@ -426,7 +427,7 @@ export class AuthService {
           })
           .eq('id', stringToUUID(userId));
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to update password in Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to update password in Supabase:', e);
       }
     }
   }
@@ -448,7 +449,7 @@ export class AuthService {
           };
         }
       } catch (e) {
-        console.warn('🔮 [AuthService] Error loading user for 2FA setup:', e);
+        logger.warn('🔮 [AuthService] Error loading user for 2FA setup:', e);
       }
     }
 
@@ -511,7 +512,7 @@ export class AuthService {
           })
           .eq('id', stringToUUID(userId));
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to save 2FA enable in Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to save 2FA enable in Supabase:', e);
       }
     }
 
@@ -549,7 +550,7 @@ export class AuthService {
           })
           .eq('id', stringToUUID(userId));
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to disable 2FA in Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to disable 2FA in Supabase:', e);
       }
     }
 
@@ -606,7 +607,7 @@ export class AuthService {
           isActive: true
         }];
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to fetch sessions from Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to fetch sessions from Supabase:', e);
       }
     }
 
@@ -642,7 +643,7 @@ export class AuthService {
           .eq('id', stringToUUID(sessionId))
           .eq('user_id', stringToUUID(userId));
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to revoke session in Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to revoke session in Supabase:', e);
       }
     }
 
@@ -861,11 +862,11 @@ export class AuthService {
           used: false
         }));
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to record password reset in Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to record password reset in Supabase:', e);
       }
     }
 
-    console.log(`📧 [PasswordReset] Password reset requested for ${cleanEmail}. Reset Code: ${token}`);
+    logger.info(`📧 [PasswordReset] Password reset requested for ${cleanEmail}. Reset Code: ${token}`);
 
     return {
       message: `Password reset instructions sent to ${cleanEmail}. Enter your 6-digit code to set a new password.`,
@@ -954,7 +955,7 @@ export class AuthService {
           .update({ used: true })
           .eq('token', cleanToken);
       } catch (e) {
-        console.warn('🔮 [AuthService] Failed to update password in Supabase:', e);
+        logger.warn('🔮 [AuthService] Failed to update password in Supabase:', e);
       }
     }
 

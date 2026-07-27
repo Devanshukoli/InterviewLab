@@ -8,7 +8,7 @@ import {
 } from '../../src/shared/types';
 import { db } from '../db';
 import { getSupabaseClient, unwrap } from './supabase';
-import { tracer, getAITelemetryAttributes, recordMetric } from '../observability';
+import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../observability';
 import { AppError } from '../middleware/error_handling';
 
 export type { EvaluationPipelineInput, EvaluationPipelineResult };
@@ -65,7 +65,7 @@ export class EvaluationPipelineService {
       }
 
       // Step 1: EvaluationAgent
-      console.log('🚀 [EvaluationPipelineService] Starting Step 1: EvaluationAgent...');
+      logger.info('🚀 [EvaluationPipelineService] Starting Step 1: EvaluationAgent...');
       const evalSpan = tracer.startSpan('EvaluationAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let evaluationResult: EvaluationResult;
       try {
@@ -94,7 +94,7 @@ export class EvaluationPipelineService {
       }
 
       // Step 2: CoachAgent
-      console.log('🚀 [EvaluationPipelineService] Starting Step 2: CoachAgent...');
+      logger.info('🚀 [EvaluationPipelineService] Starting Step 2: CoachAgent...');
       const coachSpan = tracer.startSpan('CoachAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let coachingResult: CoachAnalysisResult;
       try {
@@ -111,7 +111,7 @@ export class EvaluationPipelineService {
       }
 
       // Step 3: Persist results
-      console.log('🚀 [EvaluationPipelineService] Starting Step 3: Persist results...');
+      logger.info('🚀 [EvaluationPipelineService] Starting Step 3: Persist results...');
       const persistSpan = tracer.startSpan('PersistEvaluation', rootSpan.traceId, rootSpan, aiAttrs);
       const persistedAt = new Date().toISOString();
 
@@ -156,7 +156,7 @@ export class EvaluationPipelineService {
                   updated_at: persistedAt
                 }));
               } catch (supaErr) {
-                console.warn('🔮 [Supabase] Session evaluation sync notice:', supaErr);
+                logger.warn('🔮 [Supabase] Session evaluation sync notice:', supaErr);
               }
             })();
           }
@@ -184,7 +184,7 @@ export class EvaluationPipelineService {
       };
     } catch (err: any) {
       rootSpan.recordException(err);
-      console.error('❌ [EvaluationPipelineService] Pipeline execution halted due to error:', err.message || err);
+      logger.error('❌ [EvaluationPipelineService] Pipeline execution halted due to error:', err.message || err);
       throw err;
     }
   }

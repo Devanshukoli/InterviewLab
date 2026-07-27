@@ -1,5 +1,5 @@
 import { getLLMProvider } from '../../services/llm';
-import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
+import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
 import { PromptService } from '../../services/prompt.service';
 import { JDAnalysisResult, JobRequirement } from '../../../src/shared/types';
@@ -173,7 +173,7 @@ export class JDAgent {
         span.addEvent('LLM Response Received', { 'llm.attempt': 1, 'response.length': rawOutput.length });
       } catch (llmErr: any) {
         recordMetric.recordLLMRequestFailure({ agent: 'jd-agent', 'llm.attempt': 1, 'llm.provider': this.providerName, error: llmErr.message });
-        console.error('❌ [JDAgent] LLM generation call failed on first attempt:', llmErr);
+        logger.error('❌ [JDAgent] LLM generation call failed on first attempt:', llmErr);
         throw new JDLLMError(`LLM generation failed: ${llmErr.message}`, { cause: llmErr });
       }
 
@@ -188,7 +188,7 @@ export class JDAgent {
         span.addEvent('JSON Parsed', { 'llm.attempt': 1 });
       } catch (parseErr: any) {
         span.addEvent('Validation Failed', { 'llm.attempt': 1, 'reason': 'json_parse_error' });
-        console.warn('🔮 [JDAgent] Initial JSON parsing failed. Attempting retry once...', parseErr.message);
+        logger.warn('🔮 [JDAgent] Initial JSON parsing failed. Attempting retry once...', parseErr.message);
       }
 
       // First Attempt - Validation
@@ -203,12 +203,12 @@ export class JDAgent {
           return validation.data;
         }
         span.addEvent('Validation Failed', { 'llm.attempt': 1, 'errors.count': validation.errors?.length || 0 });
-        console.warn('🔮 [JDAgent] Initial schema validation failed. Attempting retry once...', validation.errors);
+        logger.warn('🔮 [JDAgent] Initial schema validation failed. Attempting retry once...', validation.errors);
       }
 
       // RETRY ONCE if parsing or validation failed
       span.addEvent('Retry Triggered', { 'retry.attempt': 2 });
-      console.log('🔮 [JDAgent] Retrying LLM call once with strict output instructions...');
+      logger.info('🔮 [JDAgent] Retrying LLM call once with strict output instructions...');
 
       const retryPrompt = `CRITICAL CORRECTION REQUIRED: Your previous output was not valid JSON or failed schema validation.
 
@@ -240,7 +240,7 @@ ${jdText.trim()}
         span.addEvent('LLM Response Received', { 'llm.attempt': 2, 'response.length': retryRawOutput.length });
       } catch (retryLlmErr: any) {
         recordMetric.recordLLMRequestFailure({ agent: 'jd-agent', 'llm.attempt': 2, 'llm.provider': this.providerName, error: retryLlmErr.message });
-        console.error('❌ [JDAgent] LLM generation call failed on retry:', retryLlmErr);
+        logger.error('❌ [JDAgent] LLM generation call failed on retry:', retryLlmErr);
         throw new JDLLMError(`LLM generation failed on retry: ${retryLlmErr.message}`, { cause: retryLlmErr });
       }
 
@@ -252,7 +252,7 @@ ${jdText.trim()}
         span.addEvent('JSON Parsed', { 'llm.attempt': 2 });
       } catch (retryParseErr: any) {
         span.addEvent('Validation Failed', { 'llm.attempt': 2, 'reason': 'json_parse_error' });
-        console.error('❌ [JDAgent] JSON parsing failed on retry attempt:', retryParseErr);
+        logger.error('❌ [JDAgent] JSON parsing failed on retry attempt:', retryParseErr);
         throw new JDJSONParseError('Failed to parse JSON response from LLM after retry', {
           rawOutput: retryRawOutput,
           parseError: retryParseErr.message
@@ -263,7 +263,7 @@ ${jdText.trim()}
       const retryValidation = validateAndNormalizeJDAnalysis(retryParsedJson);
       if (!retryValidation.isValid || !retryValidation.data) {
         span.addEvent('Validation Failed', { 'llm.attempt': 2, 'errors.count': retryValidation.errors?.length || 0 });
-        console.error('❌ [JDAgent] Schema validation failed on retry attempt:', retryValidation.errors);
+        logger.error('❌ [JDAgent] Schema validation failed on retry attempt:', retryValidation.errors);
         throw new JDValidationError('LLM output failed schema validation after retry', {
           errors: retryValidation.errors,
           parsedOutput: retryParsedJson

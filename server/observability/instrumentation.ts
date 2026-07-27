@@ -61,14 +61,14 @@ const resource = resourceFromAttributes({
   [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || "development",
 });
 
+const batchLogProcessor = new BatchLogRecordProcessor({ exporter: logExporter });
+
 export const sdk = new NodeSDK({
   resource,
   traceExporter,
   metricReader,
-  // Batches log records and ships them to SigNoz via OTLP/HTTP, same as traces.
-  // NOTE: sdk-logs@0.221.x takes a single options object here (not (exporter, config)
-  // like older versions / the SigNoz docs snippet, which is pinned to sdk-logs@0.208.x).
-  logRecordProcessor: new BatchLogRecordProcessor({ exporter: logExporter }),
+  logRecordProcessor: batchLogProcessor,
+  logRecordProcessors: [batchLogProcessor],
   // getNodeAutoInstrumentations() already bundles @opentelemetry/instrumentation-pino,
   // which patches pino so every log call automatically: (a) gets trace_id/span_id/trace_flags
   // stamped on it for correlation, and (b) is forwarded into the LoggerProvider above,
@@ -76,3 +76,4 @@ export const sdk = new NodeSDK({
   // see server/observability.ts, which routes all app logging (and intercepted console.*) through it.
   instrumentations: [getNodeAutoInstrumentations()],
 });
+

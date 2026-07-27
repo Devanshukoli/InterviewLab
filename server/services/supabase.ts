@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import { config } from '../config';
+import { logger } from '../observability';
 
 let supabaseClient: SupabaseClient | null = null;
 
@@ -12,7 +13,7 @@ export function getSupabaseClient(): SupabaseClient | null {
       // read/write will be silently rejected. Service role bypasses RLS entirely, which is
       // the correct choice here since ownership checks already happen in application code
       // (every query below is explicitly scoped with .eq('user_id', ...)).
-      console.warn(
+      logger.warn(
         '⚠️ [Supabase] Only SUPABASE_ANON_KEY is set — SUPABASE_SERVICE_ROLE_KEY is missing. ' +
         'Since this app authenticates via a custom JWT (not Supabase Auth), auth.uid() is always ' +
         'NULL and every RLS-protected query will silently fail. Set SUPABASE_SERVICE_ROLE_KEY in .env.'
@@ -25,7 +26,7 @@ export function getSupabaseClient(): SupabaseClient | null {
         autoRefreshToken: false,
       },
     });
-    console.log('⚡ [Supabase] Client initialized successfully.');
+    logger.info('⚡ [Supabase] Client initialized successfully.');
   }
   return supabaseClient;
 }

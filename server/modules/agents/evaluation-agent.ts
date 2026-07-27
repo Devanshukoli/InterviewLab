@@ -1,5 +1,5 @@
 import { getLLMProvider } from '../../services/llm';
-import { tracer, getAITelemetryAttributes, recordMetric } from '../../observability';
+import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
 import { PromptService } from '../../services/prompt.service';
 import { 
@@ -247,7 +247,7 @@ export class EvaluationAgent {
         span.addEvent('LLM Response Received', { 'llm.attempt': 1, 'response.length': rawOutput.length });
       } catch (llmErr: any) {
         recordMetric.recordLLMRequestFailure({ agent: 'evaluation-agent', 'llm.attempt': 1, 'llm.provider': this.providerName, error: llmErr.message });
-        console.error('❌ [EvaluationAgent] LLM generation call failed on first attempt:', llmErr);
+        logger.error('❌ [EvaluationAgent] LLM generation call failed on first attempt:', llmErr);
         throw new EvaluationLLMError(`LLM generation failed: ${llmErr.message}`, { cause: llmErr });
       }
 
@@ -262,7 +262,7 @@ export class EvaluationAgent {
         span.addEvent('JSON Parsed', { 'llm.attempt': 1 });
       } catch (parseErr: any) {
         span.addEvent('Validation Failed', { 'llm.attempt': 1, 'reason': 'json_parse_error' });
-        console.warn('🔮 [EvaluationAgent] Initial JSON parsing failed. Attempting retry once...', parseErr.message);
+        logger.warn('🔮 [EvaluationAgent] Initial JSON parsing failed. Attempting retry once...', parseErr.message);
       }
 
       // First Attempt - Validation
@@ -279,12 +279,12 @@ export class EvaluationAgent {
           return validation.data;
         }
         span.addEvent('Validation Failed', { 'llm.attempt': 1, 'errors.count': validation.errors?.length || 0 });
-        console.warn('🔮 [EvaluationAgent] Initial schema validation failed. Attempting retry once...', validation.errors);
+        logger.warn('🔮 [EvaluationAgent] Initial schema validation failed. Attempting retry once...', validation.errors);
       }
 
       // RETRY ONCE if parsing or validation failed
       span.addEvent('Retry Triggered', { 'retry.attempt': 2 });
-      console.log('🔮 [EvaluationAgent] Retrying LLM call once with strict output instructions...');
+      logger.info('🔮 [EvaluationAgent] Retrying LLM call once with strict output instructions...');
 
       const retryPrompt = `CRITICAL CORRECTION REQUIRED: Your previous output was not valid JSON or failed schema validation.
 
@@ -314,7 +314,7 @@ Candidate Answer: "${candidateAnswer.trim()}"`;
         span.addEvent('LLM Response Received', { 'llm.attempt': 2, 'response.length': retryRawOutput.length });
       } catch (retryLlmErr: any) {
         recordMetric.recordLLMRequestFailure({ agent: 'evaluation-agent', 'llm.attempt': 2, 'llm.provider': this.providerName, error: retryLlmErr.message });
-        console.error('❌ [EvaluationAgent] LLM generation call failed on retry:', retryLlmErr);
+        logger.error('❌ [EvaluationAgent] LLM generation call failed on retry:', retryLlmErr);
         throw new EvaluationLLMError(`LLM generation failed on retry: ${retryLlmErr.message}`, { cause: retryLlmErr });
       }
 
@@ -326,7 +326,7 @@ Candidate Answer: "${candidateAnswer.trim()}"`;
         span.addEvent('JSON Parsed', { 'llm.attempt': 2 });
       } catch (retryParseErr: any) {
         span.addEvent('Validation Failed', { 'llm.attempt': 2, 'reason': 'json_parse_error' });
-        console.error('❌ [EvaluationAgent] JSON parsing failed on retry attempt:', retryParseErr);
+        logger.error('❌ [EvaluationAgent] JSON parsing failed on retry attempt:', retryParseErr);
         throw new EvaluationJSONParseError('Failed to parse JSON response from LLM after retry', {
           rawOutput: retryRawOutput,
           parseError: retryParseErr.message
@@ -337,7 +337,7 @@ Candidate Answer: "${candidateAnswer.trim()}"`;
       const retryValidation = validateAndNormalizeEvaluationResult(retryParsedJson);
       if (!retryValidation.isValid || !retryValidation.data) {
         span.addEvent('Validation Failed', { 'llm.attempt': 2, 'errors.count': retryValidation.errors?.length || 0 });
-        console.error('❌ [EvaluationAgent] Schema validation failed on retry attempt:', retryValidation.errors);
+        logger.error('❌ [EvaluationAgent] Schema validation failed on retry attempt:', retryValidation.errors);
         throw new EvaluationValidationError('LLM output failed schema validation after retry', {
           errors: retryValidation.errors,
           parsedOutput: retryParsedJson

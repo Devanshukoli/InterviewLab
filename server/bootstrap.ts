@@ -1,31 +1,32 @@
 import { sdk } from "./observability/instrumentation";
 import { config } from "./config";
+import { logger } from "./observability";
 
 async function bootstrap() {
   let server: any = null;
 
   try {
     await sdk.start();
-    console.log("[OpenTelemetry] SDK started successfully");
+    logger.info("[OpenTelemetry] SDK started successfully");
 
     const serverModule = await import("./index");
     server = await serverModule.default;
   } catch (error) {
-    console.error("[OpenTelemetry] Failed to start SDK or server", error);
+    logger.error("[OpenTelemetry] Failed to start SDK or server", error);
     process.exit(1);
   }
 
   const gracefulShutdown = async (signal: string) => {
-    console.log(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
+    logger.info(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
 
     // 1. Set a forced timeout to exit if things take too long
     const forceExitTimeout = setTimeout(async () => {
-      console.warn("⚠️ Graceful shutdown timed out, force exiting OpenTelemetry and process...");
+      logger.warn("⚠️ Graceful shutdown timed out, force exiting OpenTelemetry and process...");
       try {
         await sdk.shutdown();
-        console.log("[OpenTelemetry] SDK shut down after timeout");
+        logger.info("[OpenTelemetry] SDK shut down after timeout");
       } catch (err) {
-        console.error("❌ Error shutting down OpenTelemetry SDK:", err);
+        logger.error("❌ Error shutting down OpenTelemetry SDK:", err);
       }
       process.exit(1);
     }, config.shutdownTimeoutMs);
@@ -33,14 +34,14 @@ async function bootstrap() {
 
     // 2. Close the HTTP server first to drain active requests
     if (server) {
-      console.log("⏳ Closing HTTP server to drain in-flight requests...");
+      logger.info("⏳ Closing HTTP server to drain in-flight requests...");
       const closeServer = () => {
         return new Promise<void>((resolve) => {
           server.close((err: any) => {
             if (err) {
-              console.error("❌ Error during HTTP server close:", err);
+              logger.error("❌ Error during HTTP server close:", err);
             } else {
-              console.log("✅ HTTP server closed cleanly.");
+              logger.info("✅ HTTP server closed cleanly.");
             }
             resolve();
           });
@@ -51,11 +52,11 @@ async function bootstrap() {
 
     // 3. Shut down the OpenTelemetry SDK
     try {
-      console.log("⏳ Shutting down OpenTelemetry SDK...");
+      logger.info("⏳ Shutting down OpenTelemetry SDK...");
       await sdk.shutdown();
-      console.log("✅ OpenTelemetry SDK shut down gracefully.");
+      logger.info("✅ OpenTelemetry SDK shut down gracefully.");
     } catch (err) {
-      console.error("❌ Error shutting down OpenTelemetry SDK:", err);
+      logger.error("❌ Error shutting down OpenTelemetry SDK:", err);
     }
 
     // 4. Clear the timeout and exit cleanly

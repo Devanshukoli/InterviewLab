@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { logger } from '../../../observability';
 
 /**
  * Encrypts a string (e.g. an API Key) using AES-256-CBC.
@@ -31,7 +32,7 @@ export function decrypt(encryptedText: string): string {
     decrypted += decipher.final('utf8');
     return decrypted;
   } catch (error) {
-    console.error('❌ Failed to decrypt value, returning raw string as fallback:', error);
+    logger.error('❌ Failed to decrypt value, returning raw string as fallback:', error);
     return encryptedText;
   }
 }
