@@ -15,23 +15,12 @@ interface EvaluationReportViewProps {
 }
 
 export default function EvaluationReportView({ session, onBackToDashboard }: EvaluationReportViewProps) {
-  const defaultReport = {
-    overallScore: 88,
-    domainStrengths: ['System Design', 'Technical Communication', 'Architecture Tradeoffs'],
-    domainWeaknesses: ['Edge-case error handling', 'Distributed tracing context propagation'],
-    recommendedTopics: [
-      { topic: 'Distributed Caching', priority: 'high' },
-      { topic: 'State Management Patterns', priority: 'medium' }
-    ],
-    summary: 'Solid overall performance. Demonstrated clear architectural reasoning and structured problem solving.'
-  };
-
   const report = {
-    overallScore: session.coachingReport?.overallScore ?? defaultReport.overallScore,
-    domainStrengths: session.coachingReport?.domainStrengths || defaultReport.domainStrengths,
-    domainWeaknesses: session.coachingReport?.domainWeaknesses || defaultReport.domainWeaknesses,
-    recommendedTopics: session.coachingReport?.recommendedTopics || defaultReport.recommendedTopics,
-    summary: session.coachingReport?.summary || defaultReport.summary
+    overallScore: session.coachingReport?.overallScore,
+    domainStrengths: session.coachingReport?.domainStrengths,
+    domainWeaknesses: session.coachingReport?.domainWeaknesses,
+    recommendedTopics: session.coachingReport?.recommendedTopics,
+    summary: session.coachingReport?.summary
   };
 
   return (

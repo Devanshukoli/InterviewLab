@@ -34,7 +34,7 @@ export default function InterviewHistoryView({
 
   // Calculate overall impression across all concluded sessions + active session
   const completedSessions = sessions.filter(s => s.status === 'completed' || s.coachingReport);
-  const totalScoreSum = completedSessions.reduce((acc, s) => acc + (s.coachingReport?.overallScore || 75), 0);
+  const totalScoreSum = completedSessions.reduce((acc, s) => acc + (s.coachingReport?.overallScore || 0), 0);
   const avgOverallScore = completedSessions.length > 0 ? Math.round(totalScoreSum / completedSessions.length) : 0;
 
   // Extract all weak topics across sessions where score < 70 or in coaching report
@@ -61,20 +61,12 @@ export default function InterviewHistoryView({
 
   // Render Session Details View if a session is selected
   if (selectedSession) {
-    const defaultReport = {
-      overallScore: 82,
-      domainStrengths: ['System Design', 'Technical Communication'],
-      domainWeaknesses: ['Distributed Tracing', 'Edge-case handling'],
-      recommendedTopics: [{ topic: 'System Resilience', priority: 'high' }],
-      summary: 'Solid performance across core engineering modules.'
-    };
-
     const report = {
-      overallScore: selectedSession.coachingReport?.overallScore ?? defaultReport.overallScore,
-      domainStrengths: selectedSession.coachingReport?.domainStrengths || defaultReport.domainStrengths,
-      domainWeaknesses: selectedSession.coachingReport?.domainWeaknesses || defaultReport.domainWeaknesses,
-      recommendedTopics: selectedSession.coachingReport?.recommendedTopics || defaultReport.recommendedTopics,
-      summary: selectedSession.coachingReport?.summary || defaultReport.summary
+      overallScore: selectedSession.coachingReport?.overallScore,
+      domainStrengths: selectedSession.coachingReport?.domainStrengths,
+      domainWeaknesses: selectedSession.coachingReport?.domainWeaknesses,
+      recommendedTopics: selectedSession.coachingReport?.recommendedTopics,
+      summary: selectedSession.coachingReport?.summary
     };
 
     const questionsList = selectedSession.questions || [];

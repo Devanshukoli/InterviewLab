@@ -206,10 +206,10 @@ export default function Sidebar({
             >
               <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800/80 mb-1">
                 <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">
-                  {user?.name || 'Devanshu Koli'}
+                  {user?.name}
                 </p>
                 <p className="text-[10px] text-zinc-500 font-mono truncate">
-                  {user?.email || 'architect@interviewops.io'}
+                  {user?.email}
                 </p>
               </div>
 
@@ -299,8 +299,8 @@ export default function Sidebar({
                   </div>
                 )}
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-200 truncate">{user?.name || 'Devanshu Koli'}</span>
-                  <span className="text-[10px] text-zinc-500 dark:text-zinc-500 font-mono truncate">{user?.email || 'architect@interviewops.io'}</span>
+                  <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-200 truncate">{user?.name}</span>
+                  <span className="text-[10px] text-zinc-500 dark:text-zinc-500 font-mono truncate">{user?.email}</span>
                 </div>
               </div>
               <ChevronUp className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />

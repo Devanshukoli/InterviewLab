@@ -89,6 +89,7 @@ export class AuthController {
     const data = await AuthService.resetPassword(token, newPassword);
     res.json({ success: true, data });
   });
+  
   static googleUrl = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId) {
@@ -488,8 +489,8 @@ export class AuthController {
 
     // 3. Fallback / direct JSON login (hard-gated behind development mode only)
     if (process.env.NODE_ENV === 'development') {
-      const userEmail = email || 'devanshu.google@interviewops.io';
-      const userName = name || 'Devanshu Koli (Google)';
+      const userEmail = email;
+      const userName = name;
       const data = await AuthService.googleLogin(userEmail, userName);
       res.json({ success: true, data });
       return;

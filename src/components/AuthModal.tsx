@@ -13,7 +13,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [viewMode, setViewMode] = useState<'auth' | 'forgot_password' | 'reset_password'>('auth');
   const [email, setEmail] = useState('architect@interviewops.io');
   const [password, setPassword] = useState('••••••••••••');
-  const [name, setName] = useState('Devanshu Koli');
+  const [name, setName] = useState('John Doe');
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -335,8 +335,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email || 'devanshu.google@interviewops.io',
-          name: name || 'Devanshu Koli (Google)'
+          email: email,
+          name: name
         })
       });
       const json = await res.json();
@@ -677,7 +677,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Devanshu Koli"
+                      placeholder="John Doe"
                       className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
                     />
                   </div>
@@ -775,4 +775,3 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
     </div>
   );
 }
-

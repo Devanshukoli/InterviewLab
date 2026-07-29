@@ -4,7 +4,7 @@ import { GeneratedQuestion, Evaluation, InterviewSession } from '../src/shared/t
 export type { GeneratedQuestion, Evaluation, InterviewSession };
 
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const DEFAULT_USER_UUID = 'a1b2c3d4-0000-0000-0000-000000000001';
+export const DEFAULT_USER_UUID = process.env.DEFAULT_USER_UUID || 'a1b2c3d4-0000-0000-0000-000000000001';
 
 export function stringToUUID(str?: string | null): string {
   if (!str) return DEFAULT_USER_UUID;

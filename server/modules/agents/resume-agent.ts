@@ -349,12 +349,12 @@ ${resumeText.trim()}
    * Classifies the industry, level of seniority, and core tech stacks
    */
   async classifyExperience(profile: ResumeProfile): Promise<{
-    seniority: 'junior' | 'mid' | 'senior' | 'lead' | 'architect';
+    seniority: 'junior' | 'mid' | 'senior' | 'lead' | 'architect' | 'Staff' | 'Principal';
     primaryRole: string;
     coreDomain: string[];
   }> {
     const years = profile.experienceYears || 0;
-    const seniority = years >= 10 ? 'architect' : years >= 7 ? 'lead' : years >= 5 ? 'senior' : years >= 2 ? 'mid' : 'junior';
+    const seniority = years >= 17 ? 'Principal' : years >= 15 ? 'Staff' : years >= 10 ? 'architect' : years >= 7 ? 'lead' : years >= 5 ? 'senior' : years >= 3 ? 'mid' : 'junior';
     return {
       seniority,
       primaryRole: profile.skills[0] ? `${profile.skills[0]} Engineer` : 'Software Engineer',

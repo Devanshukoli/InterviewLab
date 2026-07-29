@@ -292,6 +292,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
             <div className="w-2.5 h-2.5 bg-black rotate-45"></div>
           </div>
           <span className="font-semibold text-zinc-300">InterviewOps</span>
+          {/* TODO: make year below dynamic */}
           <span>© 2026. All rights reserved.</span>
         </div>
 

@@ -32,7 +32,7 @@ export const pinoLogger = pino({
     const agentName = currentStore?.agentName || (activeOtelSpan as any)?.attributes?.['agentName'] || (activeOtelSpan as any)?.attributes?.['agent.name'] || 'system';
     const userId = currentStore?.userId || (activeOtelSpan as any)?.attributes?.['user.id'] || process.env.DEFAULT_USER_ID || 'usr-anonymous';
     const llmProvider = currentStore?.llmProvider || (activeOtelSpan as any)?.attributes?.['llm.provider'] || process.env.LLM_PROVIDER || 'gemini';
-    const llmModel = currentStore?.llmModel || (activeOtelSpan as any)?.attributes?.['llm.model'] || process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    const llmModel = currentStore?.llmModel || (activeOtelSpan as any)?.attributes?.['llm.model'] || process.env.LLM_MODEL || 'gemini-3.6-flash';
     const serviceName = process.env.OTEL_SERVICE_NAME || 'interviewops-api';
 
     const attrs: Record<string, any> = {
@@ -306,7 +306,7 @@ export function logStructured(
   const agentName = String(meta['agent.name'] || meta.agentName || currentStore?.agentName || (activeOtelSpan as any)?.attributes?.['agentName'] || (activeOtelSpan as any)?.attributes?.['agent.name'] || 'system');
   const userId = String(meta['user.id'] || meta.userId || currentStore?.userId || (activeOtelSpan as any)?.attributes?.['user.id'] || process.env.DEFAULT_USER_ID || 'usr-anonymous');
   const llmProvider = String(meta['llm.provider'] || meta.llmProvider || currentStore?.llmProvider || (activeOtelSpan as any)?.attributes?.['llm.provider'] || process.env.LLM_PROVIDER || 'gemini');
-  const llmModel = String(meta['llm.model'] || meta.llmModel || currentStore?.llmModel || (activeOtelSpan as any)?.attributes?.['llm.model'] || process.env.GEMINI_MODEL || 'gemini-3.6-flash');
+  const llmModel = String(meta['llm.model'] || meta.llmModel || currentStore?.llmModel || (activeOtelSpan as any)?.attributes?.['llm.model'] || process.env.LLM_MODEL || 'gemini-3.6-flash');
   const serviceName = process.env.OTEL_SERVICE_NAME || 'interviewops-api';
   const startTime = currentStore?.startTime || Date.now();
   const requestDuration = typeof meta.requestDuration === 'number' ? meta.requestDuration : (Date.now() - startTime);
@@ -434,53 +434,8 @@ export function setupConsoleInterceptor() {
   };
 }
 
-// Global simulation store for previewing traces
-export const localTelemetryStore: TelemetrySpan[] = [
-  {
-    id: 'span-auth-01',
-    traceId: 'trace-user-login-102',
-    spanId: 'span-auth-01',
-    name: 'POST /api/auth/login',
-    service: 'interviewops-api',
-    durationMs: 42,
-    status: 'OK',
-    timestamp: new Date(Date.now() - 300000).toISOString(),
-    attributes: { 'http.status_code': 200, 'auth.role': 'user' }
-  },
-  {
-    id: 'span-db-01',
-    traceId: 'trace-user-login-102',
-    spanId: 'span-db-01',
-    name: 'SELECT FROM users',
-    service: 'supabase-postgresql',
-    durationMs: 12,
-    status: 'OK',
-    timestamp: new Date(Date.now() - 299900).toISOString(),
-    attributes: { 'db.system': 'postgresql', 'db.name': 'interviewops' }
-  },
-  {
-    id: 'span-resume-01',
-    traceId: 'trace-resume-analysis-948',
-    spanId: 'span-resume-01',
-    name: 'POST /api/interview/upload-resume',
-    service: 'interviewops-api',
-    durationMs: 1420,
-    status: 'OK',
-    timestamp: new Date(Date.now() - 120000).toISOString(),
-    attributes: { 'http.status_code': 200, 'file.size_bytes': 148200 }
-  },
-  {
-    id: 'span-resume-agent-01',
-    traceId: 'trace-resume-analysis-948',
-    spanId: 'span-resume-agent-01',
-    name: 'resume-agent:parseAndExtract',
-    service: 'resume-agent',
-    durationMs: 980,
-    status: 'OK',
-    timestamp: new Date(Date.now() - 119500).toISOString(),
-    attributes: { 'ai.provider': 'gemini', 'ai.model': 'gemini-1.5-flash' }
-  }
-];
+// Store for previewing traces
+export const localTelemetryStore: TelemetrySpan[] = [];
 
 export function addLocalTrace(span: Omit<TelemetrySpan, 'id' | 'timestamp'>) {
   const newSpan: TelemetrySpan = {
@@ -528,7 +483,7 @@ export function getAITelemetryAttributes(params?: AITelemetryParams): Record<str
     'interview.id': params?.interviewId || process.env.DEFAULT_INTERVIEW_ID || 'intv-default',
     'session.id': params?.sessionId || process.env.DEFAULT_SESSION_ID || 'sess-default',
     'llm.provider': params?.llmProvider || process.env.LLM_PROVIDER || 'google',
-    'llm.model': params?.llmModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    'llm.model': params?.llmModel || process.env.LLM_MODEL || 'gemini-2.5-flash',
     'prompt.version': params?.promptVersion || PromptService.getActiveVersion(params?.agentName),
     'interview.type': params?.interviewType || 'technical',
     'difficulty': params?.difficulty || 'medium',
@@ -716,7 +671,7 @@ export function requestTracing(req: Request, res: Response, next: NextFunction) 
 
   logContextStore.run(logCtx, () => {
     const originalEnd = res.end;
-    res.end = function(this: any, chunk?: any, encoding?: any, callback?: any) {
+    res.end = function (this: any, chunk?: any, encoding?: any, callback?: any) {
       const duration = Date.now() - startTime;
       const status = res.statusCode >= 400 ? 'ERROR' : 'OK';
 

@@ -227,6 +227,7 @@ export class PromptService {
   /**
    * Guarantees that default prompt templates are seeded in the DB
    */
+  // TODO: make sure this promptVersion is first store in supabase. or we can remove in-memory store entirely.
   private static ensureSeeded() {
     if (db.promptVersions.length === 0) {
       const now = new Date().toISOString();
@@ -260,7 +261,7 @@ export class PromptService {
       const data = JSON.parse(active.template) as PromptTemplateData;
       return { version: active.version, data };
     } catch (err) {
-      logger.warn(`🔮 Failed to parse prompt template JSON for ${agentName}. Falling back to default:`, err);
+      logger.warn(`Failed to parse prompt template JSON for ${agentName}. Falling back to default:`, err);
       return { version: 'v1.0', data: DEFAULT_PROMPTS[agentName] };
     }
   }
@@ -288,6 +289,7 @@ export class PromptService {
         const val = variables[key];
         return typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val);
       }
+      logger.warn(`Prompt interpolation: no value provided for placeholder {${key}} — leaving literal text in the prompt`);
       return match;
     });
   }

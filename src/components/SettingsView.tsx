@@ -48,8 +48,8 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'security' | 'developer' | 'notifications' | 'privacy' | 'danger'>('general');
 
   // General Settings
-  const [name, setName] = useState(user?.name || 'Devanshu Koli');
-  const [email, setEmail] = useState(user?.email || 'architect@interviewops.io');
+  const [name, setName] = useState(user?.name);
+  const [email, setEmail] = useState(user?.email);
 
   // Appearance
   const [appearance, setAppearance] = useState<'light' | 'dark' | 'system'>(() => user?.appearance || getStoredTheme());
