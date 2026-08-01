@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { logger } from '../observability';
 
 /**
@@ -21,6 +22,67 @@ export class AppError extends Error {
 
     Error.captureStackTrace(this, this.constructor);
   }
+}
+
+/**
+ * 500 Environment / Configuration Error
+ * Represents errors caused by missing, invalid, or misconfigured environment variables.
+ * These are logged as authentic errors to OpenTelemetry, but masked as generic server errors when returned to the client.
+ */
+export class EnvError extends AppError {
+  public readonly isEnvError: boolean = true;
+
+  constructor(message: string = 'Environment configuration error', details?: any) {
+    super(message, 500, details);
+    this.name = 'EnvError';
+  }
+}
+
+/**
+ * Helper to determine if an error is caused by missing, invalid, or unconfigured .env / environment variables.
+ */
+export function isEnvRelatedError(err: any): boolean {
+  if (!err) return false;
+  if (err.isEnvError || err.name === 'EnvError' || err.name === 'EnvironmentError') {
+    return true;
+  }
+  const msg = typeof err.message === 'string' ? err.message : String(err || '');
+  const stack = typeof err.stack === 'string' ? err.stack : '';
+  const name = typeof err.name === 'string' ? err.name : '';
+  const combined = `${name} ${msg} ${stack}`.toLowerCase();
+
+  const envKeywords = [
+    '.env',
+    'environment variable',
+    'invalid environment',
+    'missing environment',
+    'process.env',
+    'gemini_api_key',
+    'openai_api_key',
+    'anthropic_api_key',
+    'jwt_secret',
+    'supabase_url',
+    'supabase_anon_key',
+    'supabase_service_role_key',
+    'google_client_id',
+    'google_client_secret',
+    'encryption_secret',
+    'otel_exporter_otlp_endpoint',
+    'otel_service_name',
+    'add it via secrets',
+    'set in .env',
+    'defined in the environment',
+  ];
+
+  if (envKeywords.some(keyword => combined.includes(keyword))) {
+    return true;
+  }
+
+  if (err.cause && isEnvRelatedError(err.cause)) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -136,6 +198,38 @@ export const globalErrorHandler = (
   } else if (err instanceof SyntaxError && 'body' in err) {
     statusCode = 400;
     message = 'Malformed JSON payload in request body';
+  }
+
+  // Check if error is related to .env / environment variable configuration
+  if (isEnvRelatedError(err)) {
+    // 1. Log authentic error to OpenTelemetry and Pino logger
+    logger.error('💥 [GlobalErrorHandler] [OpenTelemetry] Authentic Environment Error:', {
+      errorName: err.name || 'EnvError',
+      errorMessage: err.message,
+      errorStack: err.stack,
+      errorDetails: err.details,
+      isEnvError: true,
+      path: req.originalUrl || req.url,
+      method: req.method,
+    });
+
+    try {
+      const activeSpan = trace.getActiveSpan();
+      if (activeSpan) {
+        activeSpan.recordException(err);
+        activeSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      }
+    } catch (e) {
+      // Ignore span recording errors
+    }
+
+    // 2. Mask as generic server error for client-side response
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      statusCode: 500,
+    });
+    return;
   }
 
   // Log non-operational or 500 internal errors for debugging

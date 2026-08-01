@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { ProfileService } from '../profile/profile.service';
-import { BadRequestError, UnauthorizedError, catchAsync } from '../../middleware/error_handling';
+import { BadRequestError, UnauthorizedError, catchAsync, isEnvRelatedError } from '../../middleware/error_handling';
 import { config } from '../../config';
 import { logger } from '../../observability';
 import {
@@ -89,7 +89,7 @@ export class AuthController {
     const data = await AuthService.resetPassword(token, newPassword);
     res.json({ success: true, data });
   });
-  
+
   static googleUrl = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId) {
@@ -105,7 +105,7 @@ export class AuthController {
 
     const host = req.get('host') || 'localhost:3000';
     const protocol = req.protocol || 'http';
-    const redirectUri = process.env.APP_URL 
+    const redirectUri = process.env.APP_URL
       ? `${process.env.APP_URL.replace(/\/$/, '')}/auth/callback`
       : `${protocol}://${host}/auth/callback`;
 
@@ -138,7 +138,7 @@ export class AuthController {
 
     const host = req.get('host') || 'localhost:3000';
     const protocol = req.protocol || 'http';
-    const redirectUri = process.env.APP_URL 
+    const redirectUri = process.env.APP_URL
       ? `${process.env.APP_URL.replace(/\/$/, '')}/auth/callback`
       : `${protocol}://${host}/auth/callback`;
 
@@ -392,7 +392,9 @@ export class AuthController {
         </html>
       `);
     } catch (err: any) {
-      logger.error('❌ [Google OAuth Callback Error]:', err.message);
+      logger.error('❌ [Google OAuth Callback Error]:', err);
+      const isEnvError = isEnvRelatedError(err);
+      const displayMsg = isEnvError ? 'Internal server error' : (err.message || 'Authentication failed');
       res.send(`
         <!DOCTYPE html>
         <html>
@@ -408,11 +410,11 @@ export class AuthController {
           <body>
             <div class="card">
               <h3 style="color:#ef4444; margin-top:0;">Authentication Error</h3>
-              <p style="font-size:13px; color:#a1a1aa;">${err.message}</p>
+              <p style="font-size:13px; color:#a1a1aa;">${displayMsg}</p>
               <button onclick="window.close()">Close Window</button>
             </div>
             <script>
-              const errorMsg = ${JSON.stringify(err.message)};
+              const errorMsg = ${JSON.stringify(displayMsg)};
               try {
                 if ('BroadcastChannel' in window) {
                   const bc = new BroadcastChannel('oauth_channel');

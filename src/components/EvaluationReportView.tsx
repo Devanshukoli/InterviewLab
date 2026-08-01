@@ -73,7 +73,7 @@ export default function EvaluationReportView({ session, onBackToDashboard }: Eva
             Domain Strengths
           </h3>
           <ul className="space-y-2 text-xs text-zinc-800 dark:text-zinc-300 font-mono">
-            {report.domainStrengths.map((s, idx) => (
+            {(report.domainStrengths || []).map((s, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 <span className="text-green-600 dark:text-green-500 font-bold">•</span>
                 <span>{s}</span>
@@ -89,7 +89,7 @@ export default function EvaluationReportView({ session, onBackToDashboard }: Eva
             Areas for Improvement
           </h3>
           <ul className="space-y-2 text-xs text-zinc-800 dark:text-zinc-300 font-mono">
-            {report.domainWeaknesses.map((w, idx) => (
+            {(report.domainWeaknesses || []).map((w, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 <span className="text-amber-600 dark:text-amber-500 font-bold">•</span>
                 <span>{w}</span>
@@ -108,7 +108,7 @@ export default function EvaluationReportView({ session, onBackToDashboard }: Eva
         </h3>
 
         <div className="space-y-3">
-          {report.recommendedTopics.map((topic, idx) => (
+          {(report.recommendedTopics || []).map((topic, idx) => (
             <div key={idx} className="p-3 bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg flex items-center justify-between">
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-200">{topic.topic}</span>
               <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded font-bold ${

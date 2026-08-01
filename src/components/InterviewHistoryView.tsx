@@ -87,15 +87,16 @@ export default function InterviewHistoryView({
       }));
 
     // Generate Candidate Overall Impression text
-    const candidateImpression = `Based on ${completedSessions.length} total interview session(s) evaluated (Overall Average: ${avgOverallScore || report.overallScore}%), the candidate demonstrates ${
-      (avgOverallScore || report.overallScore) >= 85 ? 'exceptional technical mastery and architectural depth' : 'strong foundational skills with clean problem solving'
+    const sessionScore = report.overallScore ?? 70;
+    const candidateImpression = `Based on ${completedSessions.length} total interview session(s) evaluated (Overall Average: ${avgOverallScore || sessionScore}%), the candidate demonstrates ${
+      (avgOverallScore || sessionScore) >= 85 ? 'exceptional technical mastery and architectural depth' : 'strong foundational skills with clean problem solving'
     }. ${
       overallStrengths.length > 0 ? `Key domain proficiencies include ${overallStrengths.slice(0, 3).join(', ')}. ` : ''
     }${
       sessionWeakTopics.length > 0
         ? `In this session, specific weaknesses were observed in ${sessionWeakTopics.map(w => w.topic).join(', ')}. `
         : ''
-    }Recommended focus area prior to live production rounds: ${report.recommendedTopics[0]?.topic || 'Distributed System Design'}.`;
+    }Recommended focus area prior to live production rounds: ${report.recommendedTopics?.[0]?.topic || 'Distributed System Design'}.`;
 
     return (
       <div className="max-w-4xl mx-auto space-y-6 pb-12">

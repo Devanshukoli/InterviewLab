@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config';
 import { getCurrentUserKeys } from '../middleware/userContext.middleware';
 import { recordMetric, logger } from '../observability';
+import { EnvError, isEnvRelatedError } from '../middleware/error_handling';
 
 export interface LLMProvider {
   name: string;
@@ -30,7 +31,7 @@ export class GeminiProvider implements LLMProvider {
     if (!this.ai) {
       const apiKey = config.geminiApiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error('❌ GEMINI_API_KEY is not defined in the environment. Please add it via Secrets.');
+        throw new EnvError('❌ GEMINI_API_KEY is not defined in the environment. Please add it via Secrets.');
       }
       this.ai = new GoogleGenAI({ apiKey });
     }
@@ -52,6 +53,9 @@ export class GeminiProvider implements LLMProvider {
       return response.text || '';
     } catch (error: any) {
       logger.error('❌ [GeminiProvider] Error:', error);
+      if (isEnvRelatedError(error)) {
+        throw error;
+      }
       throw new Error(`Gemini Provider failed: ${error.message}`);
     }
   }
@@ -75,6 +79,9 @@ export class GeminiProvider implements LLMProvider {
       return [];
     } catch (error: any) {
       logger.error('❌ [GeminiProvider] Embedding error:', error);
+      if (isEnvRelatedError(error)) {
+        throw error;
+      }
       throw new Error(`Gemini embedding failed: ${error.message}`);
     }
   }
@@ -99,7 +106,7 @@ export class OpenAIProvider implements LLMProvider {
     if (!this.client) {
       const apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY;
       if (!apiKey) {
-        throw new Error('❌ OPENAI_API_KEY is not defined in the environment. Please add OPENAI_API_KEY to your environment or secrets.');
+        throw new EnvError('❌ OPENAI_API_KEY is not defined in the environment. Please add OPENAI_API_KEY to your environment or secrets.');
       }
       this.client = new OpenAI({ apiKey });
     }
@@ -127,6 +134,9 @@ export class OpenAIProvider implements LLMProvider {
       return completion.choices[0]?.message?.content || '';
     } catch (error: any) {
       logger.error('❌ [OpenAIProvider] Error:', error);
+      if (isEnvRelatedError(error)) {
+        throw error;
+      }
       throw new Error(`OpenAI Provider failed: ${error.message}`);
     }
   }
@@ -144,6 +154,9 @@ export class OpenAIProvider implements LLMProvider {
       return response.data[0]?.embedding || [];
     } catch (error: any) {
       logger.error('❌ [OpenAIProvider] Embedding error:', error);
+      if (isEnvRelatedError(error)) {
+        throw error;
+      }
       throw new Error(`OpenAI embedding failed: ${error.message}`);
     }
   }
@@ -168,7 +181,7 @@ export class AnthropicProvider implements LLMProvider {
     if (!this.client) {
       const apiKey = config.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
-        throw new Error('❌ ANTHROPIC_API_KEY is not defined in the environment. Please add ANTHROPIC_API_KEY to your environment or secrets.');
+        throw new EnvError('❌ ANTHROPIC_API_KEY is not defined in the environment. Please add ANTHROPIC_API_KEY to your environment or secrets.');
       }
       this.client = new Anthropic({ apiKey });
     }
@@ -195,6 +208,9 @@ export class AnthropicProvider implements LLMProvider {
       return '';
     } catch (error: any) {
       logger.error('❌ [AnthropicProvider] Error:', error);
+      if (isEnvRelatedError(error)) {
+        throw error;
+      }
       throw new Error(`Anthropic Provider failed: ${error.message}`);
     }
   }
@@ -206,6 +222,9 @@ export class AnthropicProvider implements LLMProvider {
       return await gemini.embed(text);
     } catch (e: any) {
       logger.error('❌ [AnthropicProvider] Embedding fallback failed:', e);
+      if (isEnvRelatedError(e)) {
+        throw e;
+      }
       throw new Error(`Anthropic provider embedding fallback failed: ${e.message}`);
     }
   }
@@ -227,7 +246,7 @@ const providers: Record<string, LLMProvider> = {
 export function getLLMProvider(requestedProvider?: string): LLMProvider {
   const providerKey = (requestedProvider || config.llmProvider || 'gemini').toLowerCase();
   const selected = providers[providerKey];
-  
+
   if (!selected) {
     logger.warn(`⚠️ Provider '${providerKey}' not recognized. Falling back to Gemini provider.`);
     return providers.gemini;
