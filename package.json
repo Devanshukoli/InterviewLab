@@ -3,6 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "author": {
+    "name": "Devanshu Koli"
+  },
+  "repository": {
+    "url": "https://github.com/Devanshukoli/InterviewLab"
+  },
   "scripts": {
     "dev": "tsx server/bootstrap.ts",
     "build": "vite build && esbuild server/bootstrap.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
