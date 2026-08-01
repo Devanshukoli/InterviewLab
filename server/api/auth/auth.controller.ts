@@ -486,16 +486,6 @@ export class AuthController {
         }
       }
     }
-
-    // 3. Fallback / direct JSON login (hard-gated behind development mode only)
-    if (process.env.NODE_ENV === 'development') {
-      const userEmail = email;
-      const userName = name;
-      const data = await AuthService.googleLogin(userEmail, userName);
-      res.json({ success: true, data });
-      return;
-    }
-
     throw new BadRequestError('Google authentication credential or authorization code is required.');
   });
 
