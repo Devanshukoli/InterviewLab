@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { InterviewService } from './interview.service';
 import { BadRequestError, NotFoundError, catchAsync } from '../../middleware/error_handling';
 import path from 'path';
-import { createRequire } from 'module';
 import { logger } from '../../observability';
 import {
   UploadResumeDto,
@@ -12,8 +11,19 @@ import {
   UpdateResumeDto,
 } from '../../dtos/interview.dto';
 
-const require = createRequire(import.meta.url);
-const pdf = require('pdf-parse');
+// NOTE: previously used createRequire(import.meta.url) to load this CJS package,
+// but import.meta.url is undefined once esbuild bundles the server to CJS format
+// (--format=cjs strips import.meta, since it's an ESM-only construct). That crashed
+// the app at boot in production every time, while working fine locally under tsx's
+// real ESM loader. Dynamic import() is loaded lazily inside the function below and
+// works the same way in both environments, so there's nothing left to break.
+let pdfParsePromise: Promise<any> | null = null;
+async function getPdfParser() {
+  if (!pdfParsePromise) {
+    pdfParsePromise = import('pdf-parse').then((mod: any) => mod.default ?? mod);
+  }
+  return pdfParsePromise;
+}
 
 async function extractTextFromBuffer(buffer: Buffer, mimetype: string, filename: string): Promise<string> {
   if (mimetype.includes('text') || filename.toLowerCase().endsWith('.txt')) {
@@ -22,6 +32,7 @@ async function extractTextFromBuffer(buffer: Buffer, mimetype: string, filename:
 
   if (mimetype.includes('pdf') || filename.toLowerCase().endsWith('.pdf')) {
     try {
+      const pdf = await getPdfParser();
       const parsed = await pdf(buffer);
       if (parsed && parsed.text && parsed.text.trim().length > 10) {
         return parsed.text;
