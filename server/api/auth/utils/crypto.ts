@@ -2,7 +2,54 @@ import crypto from 'crypto';
 import { logger } from '../../../observability';
 
 /**
- * Encrypts a string (e.g. an API Key) using AES-256-CBC.
+ * Master key getter for BYOK API key encryption
+ */
+function getMasterKey(): Buffer {
+  const hexKey = process.env.BYOK_ENCRYPTION_KEY || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  if (!/^[0-9a-fA-F]{64}$/.test(hexKey)) {
+    throw new Error('BYOK_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+  }
+  return Buffer.from(hexKey, 'hex');
+}
+
+/**
+ * Encrypts an API key using AES-256-GCM authenticated encryption.
+ * Returns `ivHex:authTagHex:ciphertextHex`.
+ */
+export function encryptApiKey(plaintextKey: string): string {
+  if (!plaintextKey) return '';
+  const key = getMasterKey();
+  const iv = crypto.randomBytes(12); // 12-byte IV recommended for AES-GCM
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  let encrypted = cipher.update(plaintextKey, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+/**
+ * Decrypts an API key using AES-256-GCM authenticated encryption.
+ * Expects `ivHex:authTagHex:ciphertextHex`.
+ */
+export function decryptApiKey(encryptedPayload: string): string {
+  if (!encryptedPayload) return '';
+  const parts = encryptedPayload.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted API key payload format');
+  }
+  const [ivHex, authTagHex, ciphertextHex] = parts;
+  const key = getMasterKey();
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertextHex, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+/**
+ * Legacy AES-256-CBC encrypt function
  */
 export function encrypt(text: string): string {
   if (!text) return '';

@@ -171,7 +171,8 @@ export class GapAgent {
    */
   async evaluateGaps(
     resume: ResumeAnalysisResult | ResumeProfile | any,
-    jd?: JDAnalysisResult | JobRequirement | any | null
+    jd?: JDAnalysisResult | JobRequirement | any | null,
+    userId?: string
   ): Promise<GapAnalysisResult> {
     if (!resume) {
       throw new GapEmptyResumeError('Resume input data is required for gap analysis');
@@ -181,7 +182,7 @@ export class GapAgent {
     const span = tracer.startSpan('gap-agent:evaluateGaps', undefined, undefined, aiAttrs);
 
     try {
-      const provider = getLLMProvider(this.providerName);
+      const provider = await getLLMProvider(this.providerName, userId);
       const hasJd = Boolean(jd && (jd.jobTitle || jd.title || jd.requiredSkills || jd.mandatorySkills || jd.responsibilities));
 
       const { data: promptData } = PromptService.getActivePrompt('gap-agent');

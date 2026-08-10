@@ -5,13 +5,17 @@ import { EnvError } from './middleware/error_handling';
 // Load environment variables
 dotenv.config();
 
+const defaultMasterKey = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
-  LLM_PROVIDER: z.enum(['gemini', 'openai', 'anthropic']).default('gemini'),
-  GEMINI_API_KEY: z.string().optional().default(''),
-  OPENAI_API_KEY: z.string().optional().default(''),
-  ANTHROPIC_API_KEY: z.string().optional().default(''),
+  BYOK_ENCRYPTION_KEY: z.string().optional().transform(v => {
+    const key = (v && v.trim()) || process.env.BYOK_ENCRYPTION_KEY || defaultMasterKey;
+    return key;
+  }).refine(key => typeof key === 'string' && /^[0-9a-fA-F]{64}$/.test(key), {
+    message: 'BYOK_ENCRYPTION_KEY must be a 64-character hex string (32-byte key)'
+  }),
   SUPABASE_URL: z.string().optional().default(''),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
@@ -39,10 +43,7 @@ export const config = {
   isDev: env.NODE_ENV === 'development',
   isProd: env.NODE_ENV === 'production',
   port: env.PORT,
-  llmProvider: env.LLM_PROVIDER,
-  geminiApiKey: env.GEMINI_API_KEY,
-  openaiApiKey: env.OPENAI_API_KEY,
-  anthropicApiKey: env.ANTHROPIC_API_KEY,
+  byokEncryptionKey: env.BYOK_ENCRYPTION_KEY,
   supabase: {
     url: env.SUPABASE_URL,
     anonKey: env.SUPABASE_ANON_KEY,

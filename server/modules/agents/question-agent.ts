@@ -194,7 +194,8 @@ export class QuestionAgent {
     interviewTypeParam: string = 'technical',
     difficultyParam: string = 'medium',
     experienceLevelParam: string = 'mid',
-    numberOfQuestionsParam: number = 5
+    numberOfQuestionsParam: number = 5,
+    userIdParam?: string
   ): Promise<QuestionGenerationResult> {
     let resumeData: any;
     let gapData: any = null;
@@ -202,6 +203,7 @@ export class QuestionAgent {
     let difficulty = difficultyParam;
     let experienceLevel = experienceLevelParam;
     let numberOfQuestions = numberOfQuestionsParam;
+    let userId = userIdParam;
 
     // Determine parameter style (Object vs Positional)
     if (inputOrResume && typeof inputOrResume === 'object' && 'resume' in inputOrResume) {
@@ -212,6 +214,7 @@ export class QuestionAgent {
       difficulty = input.difficulty || difficultyParam;
       experienceLevel = input.experienceLevel || experienceLevelParam;
       numberOfQuestions = input.numberOfQuestions || numberOfQuestionsParam;
+      userId = (input as any).userId || userIdParam;
     } else {
       resumeData = inputOrResume;
       gapData = optionalGap ?? null;
@@ -233,7 +236,7 @@ export class QuestionAgent {
     const questionStartTime = Date.now();
 
     try {
-      const provider = getLLMProvider(this.providerName);
+      const provider = await getLLMProvider(this.providerName, userId);
       const { data: promptData } = PromptService.getActivePrompt('question-agent');
       const systemInstruction = promptData.systemInstruction;
       const gapSection = gapData 

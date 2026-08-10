@@ -158,7 +158,8 @@ export class CoachAgent {
    */
   async generateCoachingReport(
     evaluationsOrInput: any,
-    previousHistory?: any
+    previousHistory?: any,
+    userId?: string
   ): Promise<CoachAnalysisResult> {
     let evaluationsData: any;
     let interviewHistoryData: any = null;
@@ -181,7 +182,7 @@ export class CoachAgent {
     const span = tracer.startSpan('coach-agent:generateCoachingReport', undefined, undefined, aiAttrs);
 
     try {
-      const provider = getLLMProvider(this.providerName);
+      const provider = await getLLMProvider(this.providerName, (evaluationsOrInput as any)?.userId || userId);
       const { data: promptData } = PromptService.getActivePrompt('coach-agent');
       const systemInstruction = promptData.systemInstruction;
       const historySection = interviewHistoryData 

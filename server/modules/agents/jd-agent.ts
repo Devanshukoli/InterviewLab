@@ -147,7 +147,7 @@ export class JDAgent {
    * Accepts optional Job Description text and returns structured JSON analysis object.
    * If no Job Description is supplied (or empty/whitespace), returns null without throwing an error.
    */
-  async analyzeJobDescription(jdText?: string | null): Promise<JDAnalysisResult | null> {
+  async analyzeJobDescription(jdText?: string | null, userId?: string): Promise<JDAnalysisResult | null> {
     if (!jdText || typeof jdText !== 'string' || !jdText.trim()) {
       return null;
     }
@@ -156,7 +156,7 @@ export class JDAgent {
     const span = tracer.startSpan('jd-agent:analyzeJobDescription', undefined, undefined, aiAttrs);
 
     try {
-      const provider = getLLMProvider(this.providerName);
+      const provider = await getLLMProvider(this.providerName, userId);
       const { data: promptData } = PromptService.getActivePrompt('jd-agent');
       const systemInstruction = promptData.systemInstruction;
       const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {

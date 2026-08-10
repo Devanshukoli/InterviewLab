@@ -178,7 +178,8 @@ export class EvaluationAgent {
   async evaluateAnswer(
     questionParam: string | { question?: string; questionText?: string; expectedTopics?: string[]; expectedConcepts?: string[]; [key: string]: any } | EvaluationInput,
     candidateAnswerParam?: string,
-    expectedTopicsParam?: string[]
+    expectedTopicsParam?: string[],
+    userId?: string
   ): Promise<EvaluationResult> {
     let questionText = '';
     let candidateAnswer = '';
@@ -228,7 +229,7 @@ export class EvaluationAgent {
     const evalStartTime = Date.now();
 
     try {
-      const provider = getLLMProvider(this.providerName);
+      const provider = await getLLMProvider(this.providerName, (questionParam as any)?.userId || userId);
       const { data: promptData } = PromptService.getActivePrompt('evaluation-agent');
       const systemInstruction = promptData.systemInstruction;
       const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {

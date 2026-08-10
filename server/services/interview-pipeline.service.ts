@@ -79,7 +79,7 @@ export class InterviewPipelineService {
       const resumeSpan = tracer.startSpan('ResumeAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let resumeAnalysis: ResumeAnalysisResult;
       try {
-        resumeAnalysis = await tracer.withSpan(resumeSpan, () => this.resumeAgent.analyzeResume(input.resumeText));
+        resumeAnalysis = await tracer.withSpan(resumeSpan, () => this.resumeAgent.analyzeResume(input.resumeText, input.userId));
         resumeSpan.end('OK', { ...aiAttrs, 'resume.skills_count': resumeAnalysis.skills?.length || 0 });
       } catch (resumeErr: any) {
         resumeSpan.recordException(resumeErr);
@@ -90,7 +90,7 @@ export class InterviewPipelineService {
       const jdSpan = tracer.startSpan('JDAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let jdAnalysis: JDAnalysisResult | null = null;
       try {
-        jdAnalysis = await tracer.withSpan(jdSpan, () => this.jdAgent.analyzeJobDescription(input.jdText));
+        jdAnalysis = await tracer.withSpan(jdSpan, () => this.jdAgent.analyzeJobDescription(input.jdText, input.userId));
         jdSpan.end('OK', { ...aiAttrs, 'jd.has_content': Boolean(jdAnalysis) });
       } catch (jdErr: any) {
         jdSpan.recordException(jdErr);
@@ -101,7 +101,7 @@ export class InterviewPipelineService {
       const gapSpan = tracer.startSpan('GapAgent', rootSpan.traceId, rootSpan, aiAttrs);
       let gapAnalysis: GapAnalysisResult;
       try {
-        gapAnalysis = await tracer.withSpan(gapSpan, () => this.gapAgent.evaluateGaps(resumeAnalysis, jdAnalysis));
+        gapAnalysis = await tracer.withSpan(gapSpan, () => this.gapAgent.evaluateGaps(resumeAnalysis, jdAnalysis, input.userId));
         gapSpan.end('OK', { ...aiAttrs, 'gap.missing_skills_count': gapAnalysis.missingSkills?.length || 0 });
       } catch (gapErr: any) {
         gapSpan.recordException(gapErr);
@@ -118,7 +118,8 @@ export class InterviewPipelineService {
           interviewType: input.interviewType || 'technical',
           difficulty: input.difficulty || 'medium',
           experienceLevel: input.experienceLevel || 'mid',
-          numberOfQuestions: input.numberOfQuestions || 5
+          numberOfQuestions: input.numberOfQuestions || 5,
+          userId: input.userId
         }));
         questionSpan.end('OK', { ...aiAttrs, 'questions.count': questionResult.questions.length });
       } catch (qErr: any) {

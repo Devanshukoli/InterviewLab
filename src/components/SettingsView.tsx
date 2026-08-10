@@ -81,6 +81,137 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [anthropicKey, setAnthropicKey] = useState(user?.apiKeys?.anthropic || '');
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
 
+  // BYOK API Keys State
+  const [byokKeys, setByokKeys] = useState<Array<{
+    id: string;
+    provider: string;
+    keyHint: string;
+    label?: string;
+    isPrimary: boolean;
+    isValidated: boolean;
+    createdAt: string;
+  }>>([]);
+  const [isLoadingByokKeys, setIsLoadingByokKeys] = useState(false);
+  const [byokError, setByokError] = useState<string | null>(null);
+  const [byokSuccess, setByokSuccess] = useState<string | null>(null);
+  const [newKeyProvider, setNewKeyProvider] = useState<'gemini' | 'openai' | 'anthropic'>('gemini');
+  const [newKeyValue, setNewKeyValue] = useState('');
+  const [newKeyLabel, setNewKeyLabel] = useState('');
+  const [isAddingKey, setIsAddingKey] = useState(false);
+  const [validatingKeyId, setValidatingKeyId] = useState<string | null>(null);
+
+  const fetchByokKeys = async () => {
+    setIsLoadingByokKeys(true);
+    setByokError(null);
+    try {
+      const res = await fetchWithAuth('/api/byok/keys');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setByokKeys(json.data);
+      }
+    } catch (err: any) {
+      setByokError(err.message || 'Failed to load API keys');
+    } finally {
+      setIsLoadingByokKeys(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'developer') {
+      fetchByokKeys();
+    }
+  }, [activeTab]);
+
+  const handleAddByokKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setByokError(null);
+    setByokSuccess(null);
+    if (!newKeyValue.trim()) {
+      setByokError('API key string is required');
+      return;
+    }
+    setIsAddingKey(true);
+    try {
+      const res = await fetchWithAuth('/api/byok/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: newKeyProvider,
+          apiKey: newKeyValue.trim(),
+          label: newKeyLabel.trim() || undefined,
+          setAsPrimary: true
+        })
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to validate and save key');
+      }
+      setByokSuccess(`Successfully validated and saved ${newKeyProvider.toUpperCase()} API key!`);
+      setNewKeyValue('');
+      setNewKeyLabel('');
+      await fetchByokKeys();
+      setTimeout(() => setByokSuccess(null), 4000);
+    } catch (err: any) {
+      setByokError(err.message || 'Failed to add API key');
+    } finally {
+      setIsAddingKey(false);
+    }
+  };
+
+  const handleValidateKey = async (id: string) => {
+    setValidatingKeyId(id);
+    setByokError(null);
+    setByokSuccess(null);
+    try {
+      const res = await fetchWithAuth(`/api/byok/keys/${id}/validate`, {
+        method: 'POST'
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Key validation failed');
+      }
+      setByokSuccess(`Key validation passed! Available models: ${(json.data?.models || []).join(', ')}`);
+      await fetchByokKeys();
+      setTimeout(() => setByokSuccess(null), 4000);
+    } catch (err: any) {
+      setByokError(err.message || 'Key validation failed');
+    } finally {
+      setValidatingKeyId(null);
+    }
+  };
+
+  const handleDeleteKey = async (id: string) => {
+    if (!confirm('Are you sure you want to remove this API key?')) return;
+    setByokError(null);
+    try {
+      const res = await fetchWithAuth(`/api/byok/keys/${id}`, {
+        method: 'DELETE'
+      });
+      const json = await res.json();
+      if (json.success) {
+        setByokSuccess('API key removed');
+        await fetchByokKeys();
+        setTimeout(() => setByokSuccess(null), 3000);
+      }
+    } catch (err: any) {
+      setByokError(err.message || 'Failed to delete key');
+    }
+  };
+
+  const handleSetPrimary = async (id: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/byok/keys/${id}/primary`, {
+        method: 'POST'
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchByokKeys();
+      }
+    } catch (err: any) {
+      setByokError(err.message || 'Failed to set key as primary');
+    }
+  };
+
   // Notifications
   const [emailSummaries, setEmailSummaries] = useState(user?.notifications?.emailSummaries ?? true);
   const [practiceReminders, setPracticeReminders] = useState(user?.notifications?.practiceReminders ?? true);
@@ -773,61 +904,163 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
 
             {/* 4. DEVELOPER API KEYS */}
             {activeTab === 'developer' && (
-              <div className="space-y-5">
-                <div className="border-b border-zinc-200 dark:border-zinc-800/80 pb-2">
-                  <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Bring Your Own API Key</h2>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Configure your personal keys to route AI interview questions directly through your preferred LLM providers.</p>
+              <div className="space-y-6">
+                <div className="border-b border-zinc-200 dark:border-zinc-800/80 pb-3 flex justify-between items-end">
+                  <div>
+                    <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Bring Your Own API Key (BYOK)</h2>
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Configure user-owned API keys. Plaintext keys are encrypted with AES-256-GCM and decrypted only in server memory for LLM execution.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchByokKeys}
+                    className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 font-mono"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Refresh
+                  </button>
                 </div>
 
-                {/* Gemini Key */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <label className="font-semibold text-zinc-700 dark:text-zinc-300">Gemini API Key</label>
-                    <button type="button" onClick={() => toggleShowKey('gemini')} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
-                      {showKeys['gemini'] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
+                {/* Status Banners */}
+                {byokError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 rounded-xl text-xs text-red-800 dark:text-red-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>{byokError}</span>
                   </div>
-                  <input
-                    type={showKeys['gemini'] ? 'text' : 'password'}
-                    value={geminiKey}
-                    onChange={(e) => setGeminiKey(e.target.value)}
-                    placeholder="AIzaSy..."
-                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500 font-mono"
-                  />
+                )}
+
+                {byokSuccess && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-900 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span>{byokSuccess}</span>
+                  </div>
+                )}
+
+                {/* Saved Keys List */}
+                <div className="space-y-3">
+                  <span className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider block">Your Saved API Keys</span>
+                  
+                  {isLoadingByokKeys ? (
+                    <div className="p-4 text-center text-xs text-zinc-500 flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Loading configured keys...
+                    </div>
+                  ) : byokKeys.length === 0 ? (
+                    <div className="p-4 bg-zinc-50 dark:bg-[#09090b] border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl text-center text-xs text-zinc-500">
+                      No API keys configured yet. Add an API key below to enable AI interview generation.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {byokKeys.map(k => (
+                        <div key={k.id} className="p-3.5 bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold uppercase text-[10px] tracking-wider bg-blue-100 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">
+                                {k.provider}
+                              </span>
+                              {k.isPrimary && (
+                                <span className="font-bold text-[9px] bg-green-100 dark:bg-green-950/80 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">
+                                  PRIMARY
+                                </span>
+                              )}
+                              {k.isValidated ? (
+                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+                                  <Check className="w-3 h-3" /> Validated
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                                  Unvalidated
+                                </span>
+                              )}
+                              {k.label && <span className="text-zinc-500 font-medium">({k.label})</span>}
+                            </div>
+                            <div className="font-mono text-zinc-700 dark:text-zinc-300 text-[11px]">
+                              Key: <span className="bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{k.keyHint}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-end sm:self-center">
+                            {!k.isPrimary && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetPrimary(k.id)}
+                                className="px-2.5 py-1 text-[11px] rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
+                              >
+                                Set Primary
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleValidateKey(k.id)}
+                              disabled={validatingKeyId === k.id}
+                              className="px-2.5 py-1 text-[11px] rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white transition-colors flex items-center gap-1"
+                            >
+                              {validatingKeyId === k.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                              <span>Validate</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteKey(k.id)}
+                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg transition-colors"
+                              title="Delete Key"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* OpenAI Key */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <label className="font-semibold text-zinc-700 dark:text-zinc-300">OpenAI API Key</label>
-                    <button type="button" onClick={() => toggleShowKey('openai')} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
-                      {showKeys['openai'] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                  <input
-                    type={showKeys['openai'] ? 'text' : 'password'}
-                    value={openaiKey}
-                    onChange={(e) => setOpenaiKey(e.target.value)}
-                    placeholder="sk-proj-..."
-                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500 font-mono"
-                  />
-                </div>
+                {/* Add New Key Form */}
+                <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-4">
+                  <span className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider block">Add New LLM Provider Key</span>
 
-                {/* Anthropic Key */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <label className="font-semibold text-zinc-700 dark:text-zinc-300">Anthropic Claude Key</label>
-                    <button type="button" onClick={() => toggleShowKey('anthropic')} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
-                      {showKeys['anthropic'] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      { id: 'gemini', label: 'Google Gemini' },
+                      { id: 'openai', label: 'OpenAI' },
+                      { id: 'anthropic', label: 'Anthropic Claude' }
+                    ].map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setNewKeyProvider(p.id as any)}
+                        className={`p-2.5 text-xs font-semibold rounded-xl border transition-all text-center ${
+                          newKeyProvider === p.id
+                            ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
+                            : 'bg-zinc-50 dark:bg-[#09090b] border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
                   </div>
-                  <input
-                    type={showKeys['anthropic'] ? 'text' : 'password'}
-                    value={anthropicKey}
-                    onChange={(e) => setAnthropicKey(e.target.value)}
-                    placeholder="sk-ant-..."
-                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500 font-mono"
-                  />
+
+                  <div className="space-y-2">
+                    <input
+                      type="password"
+                      value={newKeyValue}
+                      onChange={(e) => setNewKeyValue(e.target.value)}
+                      placeholder={`Enter ${newKeyProvider.toUpperCase()} API key...`}
+                      className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    />
+                    <input
+                      type="text"
+                      value={newKeyLabel}
+                      onChange={(e) => setNewKeyLabel(e.target.value)}
+                      placeholder="Key Description / Label (e.g. Work Key)"
+                      className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddByokKey}
+                    disabled={isAddingKey || !newKeyValue.trim()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-5 py-2.5 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isAddingKey ? <Loader2 className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
+                    <span>{isAddingKey ? 'Validating & Encryption Saving...' : 'Save & Validate Key'}</span>
+                  </button>
                 </div>
               </div>
             )}

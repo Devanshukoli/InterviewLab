@@ -6,6 +6,7 @@ import { historyRouter } from './history/history.routes';
 import { progressRouter } from './progress/progress.routes';
 import { profileRouter } from './profile/profile.routes';
 import { telemetryRouter } from './telemetry/telemetry.routes';
+import { byokRouter } from './byok/byok.routes';
 import { generalLimiter, authLimiter, llmLimiter } from '../middleware/rateLimit';
 
 export const apiRouter = Router();
@@ -15,6 +16,7 @@ apiRouter.use(generalLimiter);
 
 apiRouter.use('/auth', authLimiter, authRouter);
 apiRouter.use('/interview', llmLimiter, interviewRouter);
+apiRouter.use('/byok', byokRouter);
 apiRouter.use('/billing', billingRouter);
 apiRouter.use('/history', historyRouter);
 apiRouter.use('/progress', progressRouter);

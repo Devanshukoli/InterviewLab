@@ -71,9 +71,10 @@ export class EvaluationPipelineService {
       try {
         evaluationResult = await tracer.withSpan(evalSpan, () =>
           this.evaluationAgent.evaluateAnswer(
-            input.question,
+            input.question as any,
             input.candidateAnswer,
-            input.expectedTopics
+            input.expectedTopics as any,
+            input.userId
           )
         );
         evalSpan.end('OK', { ...aiAttrs, 'evaluation.score': evaluationResult.score });
@@ -101,7 +102,8 @@ export class EvaluationPipelineService {
         coachingResult = await tracer.withSpan(coachSpan, () =>
           this.coachAgent.generateCoachingReport(
             [evaluationResult],
-            previousHistory
+            previousHistory,
+            input.userId
           )
         );
         coachSpan.end('OK', { ...aiAttrs, 'coaching.difficulty': coachingResult.recommendedDifficulty });

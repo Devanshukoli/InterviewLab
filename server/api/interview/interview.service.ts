@@ -2,9 +2,10 @@ import crypto from 'crypto';
 import { db, InterviewSession, GeneratedQuestion, Evaluation, Resume, JobDescription, stringToUUID } from '../../db';
 import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../../observability';
 import { getLLMProvider } from '../../services/llm';
-import { NotFoundError } from '../../middleware/error_handling';
+import { NotFoundError, AppError } from '../../middleware/error_handling';
 import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { defaultEvaluationAgent } from '../../modules/agents/evaluation-agent';
+import { ByokService } from '../byok/byok.service';
 
 export function ensureUUID(id?: string): string {
   return stringToUUID(id);
@@ -278,6 +279,11 @@ export class InterviewService {
 
     try {
       const userId = user?.id || 'usr-anonymous';
+      const hasKey = await ByokService.hasValidKey(userId);
+      if (!hasKey) {
+        throw new AppError('No valid API key configured. Please add an API key in Settings before starting an interview session.', 403);
+      }
+
       const supabase = getSupabaseClient();
 
       let resume = db.resumes.get(resumeId);
@@ -334,7 +340,7 @@ export class InterviewService {
       const questionCount = Math.min(Math.max(Number(numberOfQuestions) || 3, 1), 10);
 
       try {
-        const provider = getLLMProvider();
+        const provider = await getLLMProvider(undefined, userId);
         const prompt = `You are a Principal Technical Interviewer evaluating a candidate.
 Resume Content: "${resume.text}"
 ${jd ? `Target Job Description: "${jd.text}"` : ''}
@@ -533,7 +539,8 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
         const evalResult = await defaultEvaluationAgent.evaluateAnswer(
           question.questionText || question.topic,
           answerText,
-          question.expectedConcepts
+          question.expectedConcepts,
+          userId
         );
 
         score = evalResult.score;

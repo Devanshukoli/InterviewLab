@@ -10,6 +10,7 @@ import InterviewHistoryView from './components/InterviewHistoryView';
 import ResumeLibraryView from './components/ResumeLibraryView';
 import LearningProgressView from './components/LearningProgressView';
 import SettingsView from './components/SettingsView';
+import OnboardingApiKeyModal from './components/OnboardingApiKeyModal';
 
 import { 
   UserProfile, 
@@ -47,6 +48,23 @@ export default function App() {
   // Profile / Billing Modals
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [billingNoticeOpen, setBillingNoticeOpen] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [hasValidApiKey, setHasValidApiKey] = useState<boolean | null>(null);
+
+  const checkByokStatus = async () => {
+    try {
+      const res = await fetchWithAuth('/api/byok/status');
+      const json = await res.json();
+      if (json.success && json.data) {
+        setHasValidApiKey(json.data.hasValidKey);
+        if (!json.data.hasValidKey && user) {
+          setShowApiKeyModal(true);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to check BYOK status', e);
+    }
+  };
 
   // Sidebar Collapse State
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -147,6 +165,7 @@ export default function App() {
       const json = await res.json();
       if (json.success && json.data) {
         setUser(json.data);
+        checkByokStatus();
       } else {
         clearAuthTokens();
         setUser(null);
@@ -248,6 +267,13 @@ export default function App() {
         setCurrentSession(qJson.data);
         setActiveTab('active-session');
         fetchHistory();
+      } else {
+        const errMsg = qJson.message || 'Failed to generate interview session';
+        if (qRes.status === 403 || errMsg.toLowerCase().includes('api key')) {
+          setShowApiKeyModal(true);
+        } else {
+          alert('Error generating interview session: ' + errMsg);
+        }
       }
     } catch (err: any) {
       alert('Error generating interview session: ' + err.message);
@@ -620,6 +646,17 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Onboarding / Start Session API Key Modal */}
+      <OnboardingApiKeyModal
+        isOpen={showApiKeyModal}
+        onClose={hasValidApiKey ? () => setShowApiKeyModal(false) : undefined}
+        onSuccess={() => {
+          setShowApiKeyModal(false);
+          setHasValidApiKey(true);
+          checkByokStatus();
+        }}
+      />
 
     </div>
   );

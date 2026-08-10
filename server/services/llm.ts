@@ -1,60 +1,63 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { config } from '../config';
-import { getCurrentUserKeys } from '../middleware/userContext.middleware';
 import { recordMetric, logger } from '../observability';
-import { EnvError, isEnvRelatedError } from '../middleware/error_handling';
+import { AppError } from '../middleware/error_handling';
+import { ByokService } from '../api/byok/byok.service';
+import { decryptApiKey } from '../api/auth/utils/crypto';
+import { Provider, DEFAULT_MODEL_PER_PROVIDER } from './model-registry';
 
 export interface LLMProvider {
-  name: string;
+  name: Provider;
+  model: string;
   generate(prompt: string, systemInstruction?: string): Promise<string>;
   embed(text: string): Promise<number[]>;
 }
 
-/**
- * GeminiProvider implements LLMProvider using official Google GenAI SDK (@google/genai)
- */
-export class GeminiProvider implements LLMProvider {
-  name = 'gemini';
-  private ai: GoogleGenAI | null = null;
+function isAuthError(error: any): boolean {
+  if (!error) return false;
+  const status = error.status || error.statusCode || error.response?.status;
+  if (status === 401 || status === 403) return true;
+  const msg = (error.message || String(error)).toLowerCase();
+  return (
+    msg.includes('401') ||
+    msg.includes('403') ||
+    msg.includes('invalid api key') ||
+    msg.includes('invalid_api_key') ||
+    msg.includes('unauthorized') ||
+    msg.includes('authentication') ||
+    msg.includes('api_key_invalid')
+  );
+}
 
-  private getClient(): GoogleGenAI {
-    const userKeys = getCurrentUserKeys();
-    const userApiKey = userKeys?.gemini;
+class GeminiUserProvider implements LLMProvider {
+  name: Provider = 'gemini';
+  model: string;
+  private apiKey: string;
+  private userId: string;
 
-    if (userApiKey) {
-      logger.info('🔮 [GeminiProvider] Using request-scoped User BYOK key');
-      return new GoogleGenAI({ apiKey: userApiKey });
-    }
-
-    if (!this.ai) {
-      const apiKey = config.geminiApiKey || process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new EnvError('❌ GEMINI_API_KEY is not defined in the environment. Please add it via Secrets.');
-      }
-      this.ai = new GoogleGenAI({ apiKey });
-    }
-    return this.ai;
+  constructor(apiKey: string, model: string, userId: string) {
+    this.apiKey = apiKey;
+    this.model = model;
+    this.userId = userId;
   }
 
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
     recordMetric.recordLLMRequest({ provider: this.name });
     try {
-      logger.info('🔮 [GeminiProvider] Initiating content generation call...');
-      const client = this.getClient();
-      const response = await client.models.generateContent({
-        model: 'gemini-3.6-flash',
+      logger.info(`🔮 [GeminiUserProvider] Generating with model ${this.model}...`);
+      const ai = new GoogleGenAI({ apiKey: this.apiKey });
+      const response = await ai.models.generateContent({
+        model: this.model,
         contents: prompt,
         config: systemInstruction ? { systemInstruction } : undefined,
       });
-
-      logger.info('🔮 [GeminiProvider] Call completed successfully.');
       return response.text || '';
     } catch (error: any) {
-      logger.error('❌ [GeminiProvider] Error:', error);
-      if (isEnvRelatedError(error)) {
-        throw error;
+      logger.error('❌ [GeminiUserProvider] Error:', error);
+      if (isAuthError(error)) {
+        await ByokService.markApiKeyInvalid(this.userId, 'gemini');
+        throw new AppError('Your GEMINI API key is no longer valid — please update it in Settings.', 401);
       }
       throw new Error(`Gemini Provider failed: ${error.message}`);
     }
@@ -62,80 +65,58 @@ export class GeminiProvider implements LLMProvider {
 
   async embed(text: string): Promise<number[]> {
     try {
-      logger.info('🔮 [GeminiProvider] Generating embedding vector...');
-      const client = this.getClient();
-      const response = await client.models.embedContent({
+      const ai = new GoogleGenAI({ apiKey: this.apiKey });
+      const response = await ai.models.embedContent({
         model: 'text-embedding-004',
         contents: text,
       });
-
-      logger.info('🔮 [GeminiProvider] Embedding generated.');
       const res = response as any;
-      if (res.embedding?.values) {
-        return res.embedding.values;
-      } else if (res.embeddings?.[0]?.values) {
-        return res.embeddings[0].values;
-      }
+      if (res.embedding?.values) return res.embedding.values;
+      if (res.embeddings?.[0]?.values) return res.embeddings[0].values;
       return [];
     } catch (error: any) {
-      logger.error('❌ [GeminiProvider] Embedding error:', error);
-      if (isEnvRelatedError(error)) {
-        throw error;
+      if (isAuthError(error)) {
+        await ByokService.markApiKeyInvalid(this.userId, 'gemini');
+        throw new AppError('Your GEMINI API key is no longer valid — please update it in Settings.', 401);
       }
       throw new Error(`Gemini embedding failed: ${error.message}`);
     }
   }
 }
 
-/**
- * OpenAIProvider implements LLMProvider using official OpenAI SDK
- */
-export class OpenAIProvider implements LLMProvider {
-  name = 'openai';
-  private client: OpenAI | null = null;
+class OpenAIUserProvider implements LLMProvider {
+  name: Provider = 'openai';
+  model: string;
+  private apiKey: string;
+  private userId: string;
 
-  private getClient(): OpenAI {
-    const userKeys = getCurrentUserKeys();
-    const userApiKey = userKeys?.openai;
-
-    if (userApiKey) {
-      logger.info('🔮 [OpenAIProvider] Using request-scoped User BYOK key');
-      return new OpenAI({ apiKey: userApiKey });
-    }
-
-    if (!this.client) {
-      const apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY;
-      if (!apiKey) {
-        throw new EnvError('❌ OPENAI_API_KEY is not defined in the environment. Please add OPENAI_API_KEY to your environment or secrets.');
-      }
-      this.client = new OpenAI({ apiKey });
-    }
-    return this.client;
+  constructor(apiKey: string, model: string, userId: string) {
+    this.apiKey = apiKey;
+    this.model = model;
+    this.userId = userId;
   }
 
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
     recordMetric.recordLLMRequest({ provider: this.name });
     try {
-      logger.info('🔮 [OpenAIProvider] Initiating Chat Completion call (gpt-4o)...');
-      const client = this.getClient();
+      logger.info(`🔮 [OpenAIUserProvider] Generating with model ${this.model}...`);
+      const client = new OpenAI({ apiKey: this.apiKey });
       const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-
       if (systemInstruction) {
         messages.push({ role: 'system', content: systemInstruction });
       }
       messages.push({ role: 'user', content: prompt });
 
       const completion = await client.chat.completions.create({
-        model: 'gpt-4o',
+        model: this.model,
         messages,
       });
-
-      logger.info('🔮 [OpenAIProvider] Call completed successfully.');
       return completion.choices[0]?.message?.content || '';
     } catch (error: any) {
-      logger.error('❌ [OpenAIProvider] Error:', error);
-      if (isEnvRelatedError(error)) {
-        throw error;
+      logger.error('❌ [OpenAIUserProvider] Error:', error);
+      if (isAuthError(error)) {
+        await ByokService.markApiKeyInvalid(this.userId, 'openai');
+        throw new AppError('Your OPENAI API key is no longer valid — please update it in Settings.', 401);
       }
       throw new Error(`OpenAI Provider failed: ${error.message}`);
     }
@@ -143,114 +124,112 @@ export class OpenAIProvider implements LLMProvider {
 
   async embed(text: string): Promise<number[]> {
     try {
-      logger.info('🔮 [OpenAIProvider] Generating text embedding (text-embedding-3-small)...');
-      const client = this.getClient();
+      const client = new OpenAI({ apiKey: this.apiKey });
       const response = await client.embeddings.create({
         model: 'text-embedding-3-small',
         input: text,
       });
-
-      logger.info('🔮 [OpenAIProvider] Embedding generated.');
       return response.data[0]?.embedding || [];
     } catch (error: any) {
-      logger.error('❌ [OpenAIProvider] Embedding error:', error);
-      if (isEnvRelatedError(error)) {
-        throw error;
+      if (isAuthError(error)) {
+        await ByokService.markApiKeyInvalid(this.userId, 'openai');
+        throw new AppError('Your OPENAI API key is no longer valid — please update it in Settings.', 401);
       }
       throw new Error(`OpenAI embedding failed: ${error.message}`);
     }
   }
 }
 
-/**
- * AnthropicProvider implements LLMProvider using official Anthropic SDK
- */
-export class AnthropicProvider implements LLMProvider {
-  name = 'anthropic';
-  private client: Anthropic | null = null;
+class AnthropicUserProvider implements LLMProvider {
+  name: Provider = 'anthropic';
+  model: string;
+  private apiKey: string;
+  private userId: string;
 
-  private getClient(): Anthropic {
-    const userKeys = getCurrentUserKeys();
-    const userApiKey = userKeys?.anthropic;
-
-    if (userApiKey) {
-      logger.info('🔮 [AnthropicProvider] Using request-scoped User BYOK key');
-      return new Anthropic({ apiKey: userApiKey });
-    }
-
-    if (!this.client) {
-      const apiKey = config.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        throw new EnvError('❌ ANTHROPIC_API_KEY is not defined in the environment. Please add ANTHROPIC_API_KEY to your environment or secrets.');
-      }
-      this.client = new Anthropic({ apiKey });
-    }
-    return this.client;
+  constructor(apiKey: string, model: string, userId: string) {
+    this.apiKey = apiKey;
+    this.model = model;
+    this.userId = userId;
   }
 
   async generate(prompt: string, systemInstruction?: string): Promise<string> {
     recordMetric.recordLLMRequest({ provider: this.name });
     try {
-      logger.info('🔮 [AnthropicProvider] Initiating Messages call (claude-3-5-sonnet-20241022)...');
-      const client = this.getClient();
+      logger.info(`🔮 [AnthropicUserProvider] Generating with model ${this.model}...`);
+      const client = new Anthropic({ apiKey: this.apiKey });
       const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: this.model,
         max_tokens: 4096,
         system: systemInstruction || undefined,
         messages: [{ role: 'user', content: prompt }],
       });
-
-      logger.info('🔮 [AnthropicProvider] Call completed successfully.');
       const firstBlock = response.content[0];
       if (firstBlock && firstBlock.type === 'text') {
         return firstBlock.text;
       }
       return '';
     } catch (error: any) {
-      logger.error('❌ [AnthropicProvider] Error:', error);
-      if (isEnvRelatedError(error)) {
-        throw error;
+      logger.error('❌ [AnthropicUserProvider] Error:', error);
+      if (isAuthError(error)) {
+        await ByokService.markApiKeyInvalid(this.userId, 'anthropic');
+        throw new AppError('Your ANTHROPIC API key is no longer valid — please update it in Settings.', 401);
       }
       throw new Error(`Anthropic Provider failed: ${error.message}`);
     }
   }
 
   async embed(text: string): Promise<number[]> {
-    logger.warn('⚠️ [AnthropicProvider] Anthropic API does not offer native embeddings. Falling back to GeminiProvider for embeddings...');
     try {
-      const gemini = new GeminiProvider();
-      return await gemini.embed(text);
-    } catch (e: any) {
-      logger.error('❌ [AnthropicProvider] Embedding fallback failed:', e);
-      if (isEnvRelatedError(e)) {
-        throw e;
-      }
-      throw new Error(`Anthropic provider embedding fallback failed: ${e.message}`);
-    }
+      const geminiClient = await getLlmClientForUser(this.userId, 'gemini').catch(() => null);
+      if (geminiClient) return await geminiClient.embed(text);
+      const openaiClient = await getLlmClientForUser(this.userId, 'openai').catch(() => null);
+      if (openaiClient) return await openaiClient.embed(text);
+    } catch (e) {}
+    return [];
   }
 }
 
-/**
- * Provider instances dictionary
- */
-const providers: Record<string, LLMProvider> = {
-  gemini: new GeminiProvider(),
-  openai: new OpenAIProvider(),
-  anthropic: new AnthropicProvider(),
-};
+function instantiateProviderClient(provider: Provider, apiKey: string, model: string, userId: string): LLMProvider {
+  if (provider === 'openai') {
+    return new OpenAIUserProvider(apiKey, model, userId);
+  }
+  if (provider === 'anthropic') {
+    return new AnthropicUserProvider(apiKey, model, userId);
+  }
+  return new GeminiUserProvider(apiKey, model, userId);
+}
 
 /**
- * Returns active or requested LLM provider instance.
- * Defaults to config.llmProvider or 'gemini'.
+ * Gets LLM client for user, strictly requiring user to have configured a valid API key.
  */
-export function getLLMProvider(requestedProvider?: string): LLMProvider {
-  const providerKey = (requestedProvider || config.llmProvider || 'gemini').toLowerCase();
-  const selected = providers[providerKey];
+export async function getLlmClientForUser(userId: string, requestedProvider?: string): Promise<LLMProvider> {
+  const userKeys = await ByokService.getUserKeys(userId);
+  const validKeys = userKeys.filter(k => k.isValid);
 
-  if (!selected) {
-    logger.warn(`⚠️ Provider '${providerKey}' not recognized. Falling back to Gemini provider.`);
-    return providers.gemini;
+  if (validKeys.length === 0) {
+    throw new AppError('No valid API key configured for this user. Please configure at least one API key in Settings before starting an interview session.', 403);
   }
 
-  return selected;
+  let targetKey = requestedProvider ? validKeys.find(k => k.provider === requestedProvider) : undefined;
+  if (!targetKey) {
+    targetKey = validKeys[0];
+  }
+
+  const record = await ByokService.getKeyRecord(userId, targetKey.provider);
+  if (!record || !record.isValid) {
+    throw new AppError(`No valid ${targetKey.provider.toUpperCase()} API key configured for this user.`, 403);
+  }
+
+  const apiKey = decryptApiKey(record.encryptedKey);
+  const model = record.preferredModel || DEFAULT_MODEL_PER_PROVIDER[record.provider];
+
+  return instantiateProviderClient(record.provider, apiKey, model, userId);
+}
+
+/**
+ * Helper to wrap getLlmClientForUser for legacy call signatures where provider/userId might be passed.
+ */
+export async function getLLMProvider(requestedProvider?: string, userId?: string): Promise<LLMProvider> {
+  const resolvedUserId = userId || 'usr-anonymous';
+  return getLlmClientForUser(resolvedUserId, requestedProvider);
 }

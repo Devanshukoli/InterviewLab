@@ -172,7 +172,7 @@ export class ResumeAgent {
   /**
    * Accepts uploaded resume text and returns structured JSON analysis object.
    */
-  async analyzeResume(resumeText: string): Promise<ResumeAnalysisResult> {
+  async analyzeResume(resumeText: string, userId?: string): Promise<ResumeAnalysisResult> {
     if (!resumeText || typeof resumeText !== 'string' || !resumeText.trim()) {
       throw new ResumeEmptyTextError('Resume text content is required for analysis');
     }
@@ -182,7 +182,7 @@ export class ResumeAgent {
     const resumeStartTime = Date.now();
 
     try {
-      const provider = getLLMProvider(this.providerName);
+      const provider = await getLLMProvider(this.providerName, userId);
       const { data: promptData } = PromptService.getActivePrompt('resume-agent');
       const systemInstruction = promptData.systemInstruction;
       const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {

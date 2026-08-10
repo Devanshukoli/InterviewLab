@@ -212,6 +212,19 @@ export interface PasswordResetToken {
   createdAt: string;
 }
 
+export interface UserApiKeyRecord {
+  id: string;
+  userId: string;
+  provider: 'openai' | 'anthropic' | 'gemini';
+  encryptedKey: string;
+  keyLastFour: string;
+  preferredModel?: string;
+  isValid: boolean;
+  lastValidatedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // In-Memory Database Stores
 class InMemoryDB {
   users: Map<string, User> = new Map();
@@ -223,6 +236,7 @@ class InMemoryDB {
   billingHistory: BillingHistory[] = [];
   userLogins: UserLogin[] = [];
   userSessions: UserSession[] = [];
+  userApiKeys: Map<string, UserApiKeyRecord> = new Map(); // key: `${userId}:${provider}`
   refreshTokens: Map<string, RefreshToken> = new Map();
   revokedAccessTokens: Map<string, RevokedToken> = new Map();
   passwordResetTokens: Map<string, PasswordResetToken> = new Map();
