@@ -90,7 +90,7 @@ export function cleanJsonResponse(rawText: string): string {
  */
 export function validateAndNormalizeQuestionResult(
   obj: any,
-  fallbackInterviewType: string = 'technical',
+  fallbackInterviewType: string = 'mixed',
   fallbackDifficulty: string = 'medium'
 ): {
   isValid: boolean;
@@ -182,7 +182,7 @@ export class QuestionAgent {
   private providerName: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName as string;
   }
 
   /**
@@ -191,10 +191,10 @@ export class QuestionAgent {
   async generateQuestions(
     inputOrResume: QuestionGenerationInput | ResumeAnalysisResult | ResumeProfile | any,
     optionalGap?: GapAnalysisResult | GapAnalysis | any | null,
-    interviewTypeParam: string = 'technical',
+    interviewTypeParam: string = 'mixed',
     difficultyParam: string = 'medium',
     experienceLevelParam: string = 'mid',
-    numberOfQuestionsParam: number = 5,
+    numberOfQuestionsParam: number = 3,
     userIdParam?: string
   ): Promise<QuestionGenerationResult> {
     let resumeData: any;
