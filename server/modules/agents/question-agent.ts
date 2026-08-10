@@ -86,11 +86,76 @@ export function cleanJsonResponse(rawText: string): string {
 }
 
 /**
+ * Common English stopwords for token-overlap similarity calculations
+ */
+const DIVERSITY_STOPWORDS = new Set([
+  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and',
+  'any', 'are', 'aren\'t', 'as', 'at', 'be', 'because', 'been', 'before', 'being',
+  'below', 'between', 'both', 'but', 'by', 'can', 'can\'t', 'cannot', 'could',
+  'couldn\'t', 'did', 'didn\'t', 'do', 'does', 'doesn\'t', 'doing', 'don\'t',
+  'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'hadn\'t',
+  'has', 'hasn\'t', 'have', 'haven\'t', 'having', 'he', 'he\'d', 'he\'ll', 'he\'s',
+  'her', 'here', 'here\'s', 'hers', 'herself', 'him', 'himself', 'his', 'how',
+  'how\'s', 'i', 'i\'d', 'i\'ll', 'i\'m', 'i\'ve', 'if', 'in', 'into', 'is',
+  'isn\'t', 'it', 'it\'s', 'its', 'itself', 'let\'s', 'me', 'more', 'most',
+  'mustn\'t', 'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once',
+  'only', 'or', 'other', 'ought', 'our', 'ours', 'ourselves', 'out', 'over',
+  'own', 'same', 'shan\'t', 'she', 'she\'d', 'she\'ll', 'she\'s', 'should',
+  'shouldn\'t', 'so', 'some', 'such', 'than', 'that', 'that\'s', 'the', 'their',
+  'theirs', 'them', 'themselves', 'then', 'there', 'there\'s', 'these', 'they',
+  'they\'d', 'they\'ll', 'they\'re', 'they\'ve', 'this', 'those', 'through',
+  'to', 'too', 'under', 'until', 'up', 'very', 'was', 'wasn\'t', 'we', 'we\'d',
+  'we\'ll', 'we\'re', 'we\'ve', 'were', 'weren\'t', 'what', 'what\'s', 'when',
+  'when\'s', 'where', 'where\'s', 'which', 'while', 'who', 'who\'s', 'whom',
+  'why', 'why\'s', 'with', 'won\'t', 'would', 'wouldn\'t', 'you', 'you\'d',
+  'you\'ll', 'you\'re', 'you\'ve', 'your', 'yours', 'yourself', 'yourselves',
+  'given', 'background', 'level'
+]);
+
+/**
+ * Computes Jaccard similarity between two question texts based on token overlap (lowercased, stopwords removed).
+ * Returns 1.0 for exact string matches.
+ */
+export function calculateQuestionSimilarity(q1: string, q2: string): number {
+  const str1 = (q1 || '').trim().toLowerCase();
+  const str2 = (q2 || '').trim().toLowerCase();
+  if (!str1 || !str2) return 0.0;
+  if (str1 === str2) return 1.0;
+
+  const tokenize = (text: string): Set<string> => {
+    const words = text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/);
+    const tokens = new Set<string>();
+    for (const w of words) {
+      if (w && !DIVERSITY_STOPWORDS.has(w)) {
+        tokens.add(w);
+      }
+    }
+    return tokens;
+  };
+
+  const set1 = tokenize(str1);
+  const set2 = tokenize(str2);
+
+  if (set1.size === 0 && set2.size === 0) return 1.0;
+  if (set1.size === 0 || set2.size === 0) return 0.0;
+
+  let intersection = 0;
+  for (const token of set1) {
+    if (set2.has(token)) {
+      intersection++;
+    }
+  }
+
+  const union = set1.size + set2.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
  * Helper to validate and normalize parsed JSON object against QuestionGenerationResult schema
  */
 export function validateAndNormalizeQuestionResult(
   obj: any,
-  fallbackInterviewType: string = 'mixed',
+  fallbackInterviewType: string = 'technical',
   fallbackDifficulty: string = 'medium'
 ): {
   isValid: boolean;
@@ -162,6 +227,22 @@ export function validateAndNormalizeQuestionResult(
     });
   }
 
+  // Diversity Check across normalized questions
+  if (normalizedQuestions.length > 1) {
+    for (let i = 0; i < normalizedQuestions.length; i++) {
+      for (let j = i + 1; j < normalizedQuestions.length; j++) {
+        const q1Text = normalizedQuestions[i].question;
+        const q2Text = normalizedQuestions[j].question;
+        const sim = calculateQuestionSimilarity(q1Text, q2Text);
+        if (sim >= 0.6) {
+          errors.push(
+            `Question ${i + 1} and Question ${j + 1} are too similar (similarity ${sim.toFixed(2)} >= 0.60): "${q1Text.slice(0, 60)}..." vs "${q2Text.slice(0, 60)}..."`
+          );
+        }
+      }
+    }
+  }
+
   if (errors.length > 0) {
     return { isValid: false, errors };
   }
@@ -180,9 +261,11 @@ export function validateAndNormalizeQuestionResult(
  */
 export class QuestionAgent {
   private providerName: string;
+  private customProvider?: any;
 
-  constructor(providerName?: string) {
-    this.providerName = providerName as string;
+  constructor(providerName?: string, customProvider?: any) {
+    this.providerName = providerName || 'gemini';
+    this.customProvider = customProvider;
   }
 
   /**
@@ -191,10 +274,10 @@ export class QuestionAgent {
   async generateQuestions(
     inputOrResume: QuestionGenerationInput | ResumeAnalysisResult | ResumeProfile | any,
     optionalGap?: GapAnalysisResult | GapAnalysis | any | null,
-    interviewTypeParam: string = 'mixed',
+    interviewTypeParam: string = 'technical',
     difficultyParam: string = 'medium',
     experienceLevelParam: string = 'mid',
-    numberOfQuestionsParam: number = 3,
+    numberOfQuestionsParam: number = 5,
     userIdParam?: string
   ): Promise<QuestionGenerationResult> {
     let resumeData: any;
@@ -225,6 +308,44 @@ export class QuestionAgent {
     }
 
     const questionCount = Math.min(Math.max(Number(numberOfQuestions) || 5, 1), 15);
+
+    // Dedupe resume skills case-insensitively & trimmed
+    let processedResumeData = resumeData;
+    let skillNote = '';
+
+    if (resumeData && typeof resumeData === 'object') {
+      const skillsList = resumeData.skills ?? resumeData.resumeProfile?.skills;
+      if (Array.isArray(skillsList)) {
+        const seen = new Set<string>();
+        const dedupedSkills: string[] = [];
+        for (const s of skillsList) {
+          if (typeof s === 'string') {
+            const trimmed = s.trim();
+            const key = trimmed.toLowerCase();
+            if (key && !seen.has(key)) {
+              seen.add(key);
+              dedupedSkills.push(trimmed);
+            }
+          } else if (s != null) {
+            dedupedSkills.push(s);
+          }
+        }
+
+        processedResumeData = {
+          ...resumeData,
+          skills: dedupedSkills
+        };
+
+        if (dedupedSkills.length < questionCount) {
+          skillNote = `\n\nNOTE ON SKILL DIVERSITY: Candidate has only ${dedupedSkills.length} unique skill(s) listed (${dedupedSkills.join(', ')}). Since ${questionCount} questions are required, you MUST vary the question category/format (e.g., system design, debugging scenario, trade-off analysis, behavioral, coding) for each question rather than reusing skill names or sentence templates.`;
+        }
+      }
+    }
+
+    const formattedResumeContext = typeof processedResumeData === 'string'
+      ? processedResumeData + skillNote
+      : JSON.stringify(processedResumeData, null, 2) + skillNote;
+
     const aiAttrs = getAITelemetryAttributes({
       llmProvider: this.providerName,
       agentName: 'question-agent',
@@ -236,7 +357,7 @@ export class QuestionAgent {
     const questionStartTime = Date.now();
 
     try {
-      const provider = await getLLMProvider(this.providerName, userId);
+      const provider = this.customProvider || await getLLMProvider(this.providerName, userId);
       const { data: promptData } = PromptService.getActivePrompt('question-agent');
       const systemInstruction = promptData.systemInstruction;
       const gapSection = gapData 
@@ -244,7 +365,7 @@ export class QuestionAgent {
         : 'No explicit Job Description gap assessment provided.';
       const initialPrompt = PromptService.interpolate(promptData.initialPrompt, {
         questionCount,
-        resumeData,
+        resumeData: formattedResumeContext,
         gapSection,
         interviewType,
         difficulty,
@@ -280,6 +401,7 @@ export class QuestionAgent {
       }
 
       // First Attempt - Validation
+      let lastValidationErrors: string[] = [];
       if (parseSuccess) {
         const validation = validateAndNormalizeQuestionResult(parsedJson, interviewType, difficulty);
         if (validation.isValid && validation.data) {
@@ -292,15 +414,32 @@ export class QuestionAgent {
           });
           return validation.data;
         }
-        span.addEvent('Validation Failed', { 'llm.attempt': 1, 'errors.count': validation.errors?.length || 0 });
-        logger.warn('🔮 [QuestionAgent] Initial schema validation failed. Attempting retry once...', validation.errors);
+
+        lastValidationErrors = validation.errors || [];
+        const isDiversityError = lastValidationErrors.some(e => e.includes('too similar'));
+        const failureReason = isDiversityError ? 'diversity_check_failed' : 'schema_validation_error';
+
+        span.addEvent('Validation Failed', { 
+          'llm.attempt': 1, 
+          'reason': failureReason, 
+          'errors.count': lastValidationErrors.length 
+        });
+        logger.warn(`🔮 [QuestionAgent] Initial validation failed (${failureReason}). Attempting retry once...`, lastValidationErrors);
       }
 
       // RETRY ONCE if parsing or validation failed
       span.addEvent('Retry Triggered', { 'retry.attempt': 2 });
       logger.info('🔮 [QuestionAgent] Retrying LLM call once with strict output instructions...');
 
-      const retryPrompt = `CRITICAL CORRECTION REQUIRED: Your previous output was not valid JSON or failed schema validation.
+      let diversityNote = '';
+      if (lastValidationErrors.length > 0) {
+        const similarityErrors = lastValidationErrors.filter(e => e.includes('too similar'));
+        if (similarityErrors.length > 0) {
+          diversityNote = `\n\nCRITICAL DIVERSITY FAILURE IN PREVIOUS ATTEMPT:\nThe following generated questions were too similar or near-duplicates:\n${similarityErrors.map(e => `- ${e}`).join('\n')}\nYou MUST generate questions that target completely different topics/skills and use distinct question categories/formats (e.g. system design, debugging scenario, trade-off analysis, behavioral, coding). Do NOT repeat sentence templates.`;
+        }
+      }
+
+      const retryPrompt = `CRITICAL CORRECTION REQUIRED: Your previous output was not valid JSON or failed schema/diversity validation.${diversityNote}
 
 Generate exactly ${questionCount} interview questions and return STRICTLY a valid JSON object with NO markdown, NO \`\`\` code fences, and NO intro/outro text.
 
@@ -321,7 +460,7 @@ Parameters:
 - Interview Type: ${interviewType}
 - Difficulty: ${difficulty}
 - Experience Level: ${experienceLevel}
-- Resume context: ${JSON.stringify(resumeData)}`;
+- Resume context: ${formattedResumeContext}`;
 
       let retryRawOutput: string;
       try {
@@ -355,10 +494,18 @@ Parameters:
       // Second Attempt - Validate
       const retryValidation = validateAndNormalizeQuestionResult(retryParsedJson, interviewType, difficulty);
       if (!retryValidation.isValid || !retryValidation.data) {
-        span.addEvent('Validation Failed', { 'llm.attempt': 2, 'errors.count': retryValidation.errors?.length || 0 });
-        logger.error('❌ [QuestionAgent] Schema validation failed on retry attempt:', retryValidation.errors);
-        throw new QuestionValidationError('LLM output failed schema validation after retry', {
-          errors: retryValidation.errors,
+        const retryErrors = retryValidation.errors || [];
+        const isDiversityError = retryErrors.some(e => e.includes('too similar'));
+        const failureReason = isDiversityError ? 'diversity_check_failed' : 'schema_validation_error';
+
+        span.addEvent('Validation Failed', { 
+          'llm.attempt': 2, 
+          'reason': failureReason, 
+          'errors.count': retryErrors.length 
+        });
+        logger.error(`❌ [QuestionAgent] Validation failed on retry attempt (${failureReason}):`, retryErrors);
+        throw new QuestionValidationError('LLM output failed schema or diversity validation after retry', {
+          errors: retryErrors,
           parsedOutput: retryParsedJson
         });
       }

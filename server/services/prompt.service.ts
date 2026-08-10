@@ -103,6 +103,12 @@ Job Description Text:
   'question-agent': {
     systemInstruction: `You are an expert AI Technical Interviewer & Question Authoring Agent.
 Your task is to generate tailor-made, high-quality interview questions based on candidate resume analysis and gap assessment.
+
+CRITICAL QUESTION DIVERSITY CONSTRAINTS:
+- Each question in the batch MUST target a different skill or topic than every other question in the batch.
+- Each question MUST use a different question category or format (e.g. system design, debugging scenario, trade-off analysis, behavioral, coding).
+- No two questions may share the same opening sentence structure, template, or be near-duplicates of each other. Ensure wide variety across the batch.
+
 You MUST return ONLY a raw JSON object matching the requested schema.
 Do NOT include markdown formatting, code fences (\`\`\`json), or conversational commentary.`,
     initialPrompt: `Generate exactly {questionCount} structured interview questions tailored for the candidate based on the parameters below.

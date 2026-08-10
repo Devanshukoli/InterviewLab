@@ -299,7 +299,7 @@ export class ByokService {
             is_valid: res.isValid,
             last_validated_at: existing.lastValidatedAt
           }).eq('user_id', userUuid).eq('provider', provider));
-        } catch (e) { }
+        } catch (e) {}
       }
     }
 
@@ -326,7 +326,7 @@ export class ByokService {
           is_valid: false,
           last_validated_at: new Date().toISOString()
         }).eq('user_id', userUuid).eq('provider', provider));
-      } catch (e) { }
+      } catch (e) {}
     }
 
     invalidateModelCache(userId, provider);
