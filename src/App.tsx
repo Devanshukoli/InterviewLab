@@ -650,7 +650,7 @@ export default function App() {
       {/* Onboarding / Start Session API Key Modal */}
       <OnboardingApiKeyModal
         isOpen={showApiKeyModal}
-        onClose={hasValidApiKey ? () => setShowApiKeyModal(false) : undefined}
+        onClose={() => setShowApiKeyModal(false)}
         onSuccess={() => {
           setShowApiKeyModal(false);
           setHasValidApiKey(true);

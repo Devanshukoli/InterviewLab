@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Key, ShieldCheck, AlertCircle, Loader2, Check, ExternalLink, X } from 'lucide-react';
 import { fetchWithAuth } from '../lib/auth';
 
@@ -23,6 +23,20 @@ export default function OnboardingApiKeyModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Close on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && onClose) {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -108,8 +122,11 @@ export default function OnboardingApiKeyModal({
           </div>
           {onClose && (
             <button
+              type="button"
               onClick={onClose}
-              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 rounded-lg"
+              className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-100 p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition-colors cursor-pointer"
+              aria-label="Close modal"
+              title="Close"
             >
               <X className="w-5 h-5" />
             </button>
