@@ -21,6 +21,19 @@ export interface UserKeyResponseDto {
 }
 
 export class ByokService {
+  static async getKeyByIdentifier(userId: string, keyIdentifier: string): Promise<UserApiKeyRecord | null> {
+    if (['openai', 'anthropic', 'gemini'].includes(keyIdentifier)) {
+      return ByokService.getKeyRecord(userId, keyIdentifier as Provider);
+    }
+
+    const keys = await ByokService.getUserKeys(userId);
+    const matched = keys.find(k => k.id === keyIdentifier);
+    if (matched) {
+      return ByokService.getKeyRecord(userId, matched.provider);
+    }
+    return null;
+  }
+
   /**
    * Helper to fetch user's raw key record from db or Supabase
    */
@@ -286,7 +299,7 @@ export class ByokService {
             is_valid: res.isValid,
             last_validated_at: existing.lastValidatedAt
           }).eq('user_id', userUuid).eq('provider', provider));
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -313,7 +326,7 @@ export class ByokService {
           is_valid: false,
           last_validated_at: new Date().toISOString()
         }).eq('user_id', userUuid).eq('provider', provider));
-      } catch (e) {}
+      } catch (e) { }
     }
 
     invalidateModelCache(userId, provider);
