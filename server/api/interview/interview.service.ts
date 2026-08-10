@@ -47,9 +47,9 @@ export class InterviewService {
   }
 
   static async uploadResume(
-    text: string, 
-    title?: string, 
-    fileType?: string, 
+    text: string,
+    title?: string,
+    fileType?: string,
     extraData?: { fileName?: string; fileSize?: number; fileUrl?: string },
     currentUser?: { id?: string }
   ): Promise<Resume> {
@@ -453,7 +453,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
 
       if (supabase) {
         try {
-          await unwrap(supabase.from('interview_sessions').insert({
+          await unwrap(supabase.from('interview_sessions').upsert({
             id: stringToUUID(sessionId),
             user_id: stringToUUID(userId),
             resume_id: stringToUUID(resumeId),
@@ -466,19 +466,18 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
             updated_at: now
           }));
 
-          for (let i = 0; i < questions.length; i++) {
-            const q = questions[i];
-            await unwrap(supabase.from('generated_questions').insert({
-              id: stringToUUID(sessionId + '-' + q.id),
-              session_id: stringToUUID(sessionId),
-              question_text: q.questionText,
-              type: InterviewService.sanitizeQuestionType(q.type),
-              topic: q.topic || q.type || 'General',
-              difficulty: InterviewService.sanitizeDifficulty(q.difficulty),
-              expected_concepts: q.expectedConcepts,
-              order_index: i
-            }));
-          }
+          const questionRows = questions.map((q, i) => ({
+            id: stringToUUID(sessionId + '-' + q.id),
+            session_id: stringToUUID(sessionId),
+            question_text: q.questionText,
+            type: InterviewService.sanitizeQuestionType(q.type),
+            topic: q.topic || q.type || 'General',
+            difficulty: InterviewService.sanitizeDifficulty(q.difficulty),
+            expected_concepts: q.expectedConcepts,
+            order_index: i
+          }));
+
+          await unwrap(supabase.from('generated_questions').upsert(questionRows));
         } catch (e) {
           logger.warn('🔮 [InterviewService] Failed to insert session and questions in Supabase:', e);
         }
@@ -568,9 +567,33 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
 
       if (supabase) {
         try {
+          const questionUuid = stringToUUID(sessionId + '-' + questionId);
+
+          // Dependency check: Validate question_id exists in generated_questions before inserting answer
+          const { data: existingQuestion } = await supabase
+            .from('generated_questions')
+            .select('id')
+            .eq('id', questionUuid)
+            .maybeSingle();
+
+          if (!existingQuestion) {
+            logger.info(`🔮 [InterviewService] Question ${questionUuid} not found in generated_questions. Persisting question before recording answer...`);
+            const qIndex = session.questions.findIndex(q => q.id === questionId);
+            await unwrap(supabase.from('generated_questions').upsert({
+              id: questionUuid,
+              session_id: stringToUUID(sessionId),
+              question_text: question.questionText,
+              type: InterviewService.sanitizeQuestionType(question.type),
+              topic: question.topic || question.type || 'General',
+              difficulty: InterviewService.sanitizeDifficulty(question.difficulty),
+              expected_concepts: question.expectedConcepts,
+              order_index: qIndex >= 0 ? qIndex : 0
+            }));
+          }
+
           await unwrap(supabase.from('answers').upsert({
             id: stringToUUID(sessionId + '-ans-' + questionId),
-            question_id: stringToUUID(sessionId + '-' + questionId),
+            question_id: questionUuid,
             session_id: stringToUUID(sessionId),
             user_id: stringToUUID(userId),
             answer_text: answerText,
@@ -579,7 +602,7 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
 
           await unwrap(supabase.from('evaluations').upsert({
             id: stringToUUID(evalId),
-            question_id: stringToUUID(sessionId + '-' + questionId),
+            question_id: questionUuid,
             session_id: stringToUUID(sessionId),
             score: evaluation.score,
             clarity_rating: evaluation.clarityRating,

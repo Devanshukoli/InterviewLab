@@ -76,5 +76,43 @@ export const sdk = new NodeSDK({
   // stamped on it for correlation, and (b) is forwarded into the LoggerProvider above,
   // which is what actually gets it to SigNoz. This only works for logs that go through pino —
   // see server/observability.ts, which routes all app logging (and intercepted console.*) through it.
-  instrumentations: [getNodeAutoInstrumentations()],
+  instrumentations: [
+    getNodeAutoInstrumentations({
+      '@opentelemetry/instrumentation-http': {
+        requestHook: (span, request: any) => {
+          try {
+            const url = request.url || '';
+            let apiName = 'http';
+            if (url.includes('/auth/login')) apiName = 'login';
+            else if (url.includes('/auth/register')) apiName = 'register';
+            else if (url.includes('/auth/logout')) apiName = 'logout';
+            else if (url.includes('/auth/me')) apiName = 'me';
+            else if (url.includes('/auth/refresh')) apiName = 'refresh';
+            else if (url.includes('/auth/google/url')) apiName = 'google-auth-url';
+            else if (url.includes('/auth/google/callback') || url.includes('/auth/callback')) apiName = 'google-auth-callback';
+            else if (url.includes('/auth/google')) apiName = 'google-auth';
+            else if (url.includes('/interview/start')) apiName = 'interview/start';
+            else if (url.includes('/interview/history')) apiName = 'interview/history';
+            else if (url.includes('/interview/evaluate') || url.includes('/interview/answer') || url.includes('/interview/session')) apiName = 'interview/answer';
+            else if (url.includes('/interview')) apiName = 'interview';
+            else if (url.includes('/resumes')) apiName = 'resumes';
+            else if (url.includes('/profile')) apiName = 'profile';
+            else if (url.includes('/progress')) apiName = 'progress';
+            else if (url.includes('/billing')) apiName = 'billing';
+            else if (url.includes('/telemetry')) apiName = 'telemetry';
+            else if (url.includes('/health')) apiName = 'health';
+            else if (url.includes('/ready')) apiName = 'ready';
+            else {
+              const clean = url.split('?')[0].replace(/^\/api\//, '').replace(/^\//, '');
+              const parts = clean.split('/').filter((p: string) => p && !p.match(/^[0-9a-fA-F-]{36}$/));
+              apiName = parts.length > 0 ? parts[parts.length - 1] : (clean || request.method || 'http');
+            }
+            span.updateName(apiName);
+            span.setAttribute('api.name', apiName);
+            span.setAttribute('rpc.method', apiName);
+          } catch (e) {}
+        },
+      },
+    }),
+  ],
 });

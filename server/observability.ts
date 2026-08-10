@@ -649,6 +649,51 @@ export const tracer = {
 };
 
 /**
+ * Helper to derive a clean, readable API name for OpenTelemetry trace spans.
+ * E.g., /api/auth/login -> 'login', /api/auth/register -> 'register', /api/interview/start -> 'interview/start'
+ */
+export function getApiNameFromReq(req: Request): string {
+  const urlPath = (req.originalUrl || req.url || '').split('?')[0];
+
+  if (urlPath.includes('/auth/login')) return 'login';
+  if (urlPath.includes('/auth/register')) return 'register';
+  if (urlPath.includes('/auth/logout')) return 'logout';
+  if (urlPath.includes('/auth/me')) return 'me';
+  if (urlPath.includes('/auth/refresh')) return 'refresh';
+  if (urlPath.includes('/auth/google/url')) return 'google-auth-url';
+  if (urlPath.includes('/auth/google/callback') || urlPath.includes('/auth/callback')) return 'google-auth-callback';
+  if (urlPath.includes('/auth/google')) return 'google-auth';
+  if (urlPath.includes('/auth/request-reset')) return 'request-reset';
+  if (urlPath.includes('/auth/reset-password')) return 'reset-password';
+  if (urlPath.includes('/auth/2fa/login-verify')) return '2fa-login-verify';
+  if (urlPath.includes('/auth/2fa/setup')) return '2fa-setup';
+  if (urlPath.includes('/auth/2fa/verify')) return '2fa-verify';
+  if (urlPath.includes('/auth/2fa/disable')) return '2fa-disable';
+  if (urlPath.includes('/auth/change-password')) return 'change-password';
+  if (urlPath.includes('/auth/logins')) return 'auth-logins';
+  if (urlPath.includes('/auth/sessions')) return 'auth-sessions';
+
+  if (urlPath.includes('/interview/start')) return 'interview/start';
+  if (urlPath.includes('/interview/history')) return 'interview/history';
+  if (urlPath.includes('/interview/evaluate') || urlPath.includes('/interview/answer') || urlPath.includes('/interview/session')) return 'interview/answer';
+  if (urlPath.includes('/interview')) return 'interview';
+
+  if (urlPath.includes('/resumes')) return 'resumes';
+  if (urlPath.includes('/profile')) return 'profile';
+  if (urlPath.includes('/progress')) return 'progress';
+  if (urlPath.includes('/billing')) return 'billing';
+  if (urlPath.includes('/telemetry')) return 'telemetry';
+  if (urlPath.includes('/health')) return 'health';
+  if (urlPath.includes('/ready')) return 'ready';
+
+  const cleaned = urlPath.replace(/^\/api\//, '').replace(/^\//, '');
+  if (!cleaned) return req.method || 'http';
+
+  const parts = cleaned.split('/').filter(p => p && !p.match(/^[0-9a-fA-F-]{36}$/));
+  return parts.length > 0 ? parts[parts.length - 1] : cleaned;
+}
+
+/**
  * requestTracing middleware tracks incoming Express requests
  */
 export function requestTracing(req: Request, res: Response, next: NextFunction) {
@@ -657,9 +702,20 @@ export function requestTracing(req: Request, res: Response, next: NextFunction) 
   const interviewId = String(req.params.interviewId || req.body?.interviewId || req.headers['x-interview-id'] || process.env.DEFAULT_INTERVIEW_ID || 'intv-default');
   const agentName = 'http';
   const startTime = Date.now();
+  const apiName = getApiNameFromReq(req);
 
   req.headers['x-trace-id'] = traceId;
   res.setHeader('X-Trace-Id', traceId);
+
+  // Update active OpenTelemetry HTTP span name & attributes
+  const activeSpan = trace.getActiveSpan();
+  if (activeSpan) {
+    activeSpan.updateName(apiName);
+    activeSpan.setAttribute('api.name', apiName);
+    activeSpan.setAttribute('http.route', req.originalUrl || req.url);
+    activeSpan.setAttribute('rpc.method', apiName);
+    activeSpan.setAttribute('service.name', process.env.OTEL_SERVICE_NAME || 'interviewops-api');
+  }
 
   const logCtx: LogContext = {
     traceId,
@@ -674,15 +730,24 @@ export function requestTracing(req: Request, res: Response, next: NextFunction) 
     res.end = function (this: any, chunk?: any, encoding?: any, callback?: any) {
       const duration = Date.now() - startTime;
       const status = res.statusCode >= 400 ? 'ERROR' : 'OK';
+      const finalApiName = getApiNameFromReq(req);
+
+      const currentActiveSpan = trace.getActiveSpan();
+      if (currentActiveSpan) {
+        currentActiveSpan.updateName(finalApiName);
+        currentActiveSpan.setAttribute('api.name', finalApiName);
+        currentActiveSpan.setAttribute('rpc.method', finalApiName);
+      }
 
       addLocalTrace({
         traceId,
         spanId,
-        name: `${req.method} ${req.originalUrl || req.url}`,
-        service: 'interviewops-api',
+        name: finalApiName,
+        service: process.env.OTEL_SERVICE_NAME || 'interviewops-api',
         durationMs: duration,
         status,
         attributes: {
+          'api.name': finalApiName,
           'http.status_code': res.statusCode,
           'http.method': req.method,
           'http.url': req.originalUrl || req.url,
