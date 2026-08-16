@@ -196,6 +196,10 @@ When a user launches a new practice session, InterviewOps coordinates a multi-ag
                          └─────────────┘
 ```
 
+### Diagram
+<img width="3667" height="8724" alt="diagram" src="https://github.com/user-attachments/assets/3514333b-4e45-4303-98b8-75480df8e682" />
+
+
 ---
 
 ## 📋 Prerequisites
