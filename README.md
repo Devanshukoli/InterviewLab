@@ -3,6 +3,8 @@
 
 InterviewOps is an enterprise-grade technical interview preparation platform built specifically for Systems Engineers, Site Reliability Engineers (SREs), and Software Architects. By evaluating a candidate's resume against specific Job Descriptions (JDs), InterviewOps deploys a multi-agent AI pipeline to generate targeted technical scenarios, evaluate answers against architectural best practices, and trace every pipeline step with full OpenTelemetry instrumentation.
 
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Devanshukoli/InterviewLab)
 ---
 
 ## 🎯 Introduction
