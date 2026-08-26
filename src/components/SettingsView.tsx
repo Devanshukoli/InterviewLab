@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { fetchWithAuth } from '../lib/auth';
-import { applyTheme, getStoredTheme } from '../lib/theme';
+import { applyTheme, getStoredTheme, previewTheme, revertThemePreview, ThemeMode } from '../lib/theme';
 import { logoutUser } from '../lib/auth';
 
 interface SettingsViewProps {
@@ -52,7 +52,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [email, setEmail] = useState(user?.email);
 
   // Appearance
-  const [appearance, setAppearance] = useState<'light' | 'dark' | 'system'>(() => user?.appearance || getStoredTheme());
+  const [appearance, setAppearance] = useState<ThemeMode>(() => user?.appearance || getStoredTheme());
 
   // Security & 2FA State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -246,8 +246,8 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     if (user) {
       setName(user.name || '');
       setEmail(user.email || '');
-      setAppearance(user.appearance || 'system');
-      applyTheme(user.appearance || 'system');
+      setAppearance(user.appearance || getStoredTheme());
+      applyTheme(user.appearance || getStoredTheme());
       setTwoFactorEnabled(user.twoFactorEnabled || false);
       setGeminiKey(user.apiKeys?.gemini || '');
       setOpenaiKey(user.apiKeys?.openai || '');
@@ -260,9 +260,15 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       setAllowTelemetry(user.privacy?.allowTelemetry ?? true);
       setSearchHistoryCleared(user.privacy?.searchHistoryCleared ?? false);
     } else {
-      applyTheme(getStoredTheme());
+      revertThemePreview();
     }
   }, [user]);
+
+  useEffect(() => {
+    return () => {
+      revertThemePreview();
+    };
+  }, []);
 
   const handleExportData = async () => {
     setIsExporting(true);
@@ -356,9 +362,19 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     }
   };
 
-  const handleAppearanceChange = (mode: 'light' | 'dark' | 'system') => {
+  const committedAppearance: ThemeMode = user?.appearance || getStoredTheme();
+
+  const handleSettingsTabChange = (id: typeof activeTab) => {
+    if (activeTab === 'appearance' && id !== 'appearance') {
+      setAppearance(committedAppearance);
+      previewTheme(committedAppearance);
+    }
+    setActiveTab(id);
+  };
+
+  const handleAppearanceChange = (mode: ThemeMode) => {
     setAppearance(mode);
-    applyTheme(mode);
+    previewTheme(mode);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -543,6 +559,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
         }
       });
 
+      applyTheme(appearance);
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (err: any) {
@@ -598,7 +615,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id as any)}
+                onClick={() => handleSettingsTabChange(item.id as typeof activeTab)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer text-left ${
                   isActive
                     ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-white font-semibold'

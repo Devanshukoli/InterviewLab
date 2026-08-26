@@ -8,17 +8,31 @@ export function getStoredTheme(): ThemeMode {
   return 'light'; // Default to light mode as requested
 }
 
-export function applyTheme(mode: ThemeMode) {
-  localStorage.setItem('theme', mode);
-  const isDark =
+function isDarkMode(mode: ThemeMode): boolean {
+  return (
     mode === 'dark' ||
-    (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  );
+}
 
-  if (isDark) {
+/** Apply a theme to the document without persisting it. */
+export function previewTheme(mode: ThemeMode) {
+  if (isDarkMode(mode)) {
     document.documentElement.classList.add('dark');
   } else {
     document.documentElement.classList.remove('dark');
   }
+}
+
+/** Persist the theme and apply it. */
+export function applyTheme(mode: ThemeMode) {
+  localStorage.setItem('theme', mode);
+  previewTheme(mode);
+}
+
+/** Restore the last saved theme (localStorage / default). */
+export function revertThemePreview() {
+  previewTheme(getStoredTheme());
 }
 
 export function initTheme() {
