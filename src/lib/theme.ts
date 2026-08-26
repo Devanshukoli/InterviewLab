@@ -1,5 +1,8 @@
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+/** Currently applied theme, including unsaved previews. */
+let activeThemeMode: ThemeMode = 'light';
+
 export function getStoredTheme(): ThemeMode {
   const stored = localStorage.getItem('theme');
   if (stored === 'light' || stored === 'dark' || stored === 'system') {
@@ -17,6 +20,7 @@ function isDarkMode(mode: ThemeMode): boolean {
 
 /** Apply a theme to the document without persisting it. */
 export function previewTheme(mode: ThemeMode) {
+  activeThemeMode = mode;
   if (isDarkMode(mode)) {
     document.documentElement.classList.add('dark');
   } else {
@@ -39,14 +43,10 @@ export function initTheme() {
   const current = getStoredTheme();
   applyTheme(current);
 
-  // Listen for system theme changes if set to 'system'
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    if (getStoredTheme() === 'system') {
-      if (e.matches) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
+  // Follow OS changes only while the active (possibly previewed) mode is system.
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (activeThemeMode === 'system') {
+      previewTheme('system');
     }
   });
 }
