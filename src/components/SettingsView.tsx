@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { fetchWithAuth } from '../lib/auth';
-import { applyTheme, getStoredTheme } from '../lib/theme';
+import { applyTheme, getStoredTheme, previewTheme, revertThemePreview, ThemeMode } from '../lib/theme';
 import { logoutUser } from '../lib/auth';
 import {
   applyReadingFont,
@@ -71,7 +71,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const fontMenuRef = useRef<HTMLDivElement>(null);
 
   // Appearance
-  const [appearance, setAppearance] = useState<'light' | 'dark' | 'system'>(() => user?.appearance || getStoredTheme());
+  const [appearance, setAppearance] = useState<ThemeMode>(() => user?.appearance || getStoredTheme());
 
   // Security & 2FA State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -410,9 +410,19 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     }
   };
 
-  const handleAppearanceChange = (mode: 'light' | 'dark' | 'system') => {
+  const committedAppearance: ThemeMode = user?.appearance || getStoredTheme();
+
+  const handleSettingsTabChange = (id: typeof activeTab) => {
+    if (activeTab === 'appearance' && id !== 'appearance') {
+      setAppearance(committedAppearance);
+      previewTheme(committedAppearance);
+    }
+    setActiveTab(id);
+  };
+
+  const handleAppearanceChange = (mode: ThemeMode) => {
     setAppearance(mode);
-    applyTheme(mode);
+    previewTheme(mode);
   };
 
   const handleReadingFontChange = (id: ReadingFontId) => {
@@ -666,7 +676,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id as any)}
+                onClick={() => handleSettingsTabChange(item.id as typeof activeTab)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer text-left ${
                   isActive
                     ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-white font-semibold'
