@@ -3,11 +3,21 @@ import { db, User, UserSettings, stringToUUID } from '../../db';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../middleware/error_handling';
 import { encrypt, decrypt, verifyPassword } from '../auth/utils/crypto';
 import { logger } from '../../observability';
+import { DEFAULT_READING_FONT, ReadingFontId, READING_FONT_IDS } from '../../../src/shared/types';
+
+function parseReadingFont(value: unknown): ReadingFontId | undefined {
+  if (typeof value === 'string' && (READING_FONT_IDS as readonly string[]).includes(value)) {
+    return value as ReadingFontId;
+  }
+  return undefined;
+}
 
 export interface UpdateProfileDTO {
   name?: string;
   email?: string;
+  username?: string;
   appearance?: 'light' | 'dark' | 'system';
+  readingFont?: ReadingFontId;
   twoFactorEnabled?: boolean;
   apiKeys?: {
     gemini?: string;
@@ -51,7 +61,9 @@ export class ProfileService {
             name: data.name || data.email.split('@')[0],
             role: data.role || 'user',
             twoFactorEnabled: data.two_factor_enabled || false,
-            appearance: data.appearance || 'system'
+            appearance: data.appearance || 'system',
+            username: typeof data.username === 'string' ? data.username : undefined,
+            readingFont: parseReadingFont(data.reading_font)
           };
           db.users.set(user.email, user);
         }
@@ -78,9 +90,11 @@ export class ProfileService {
       id: user.id,
       email: user.email,
       name: user.name,
+      username: user.username ?? savedSettings?.username ?? '',
       role: user.role || 'user',
       twoFactorEnabled: !!user.twoFactorEnabled,
       appearance: user.appearance || savedSettings?.appearance || 'system',
+      readingFont: user.readingFont || savedSettings?.readingFont || DEFAULT_READING_FONT,
       notifications: user.notifications || savedSettings?.notifications || {
         emailSummaries: true,
         practiceReminders: true,
@@ -155,9 +169,16 @@ export class ProfileService {
       user.name = updateData.name.trim();
     }
 
-    // Update Appearance
+    if (updateData.username !== undefined) {
+      user.username = updateData.username.trim();
+    }
+
     if (updateData.appearance !== undefined) {
       user.appearance = updateData.appearance;
+    }
+
+    if (updateData.readingFont !== undefined) {
+      user.readingFont = updateData.readingFont;
     }
 
     // Update Notifications
@@ -201,6 +222,8 @@ export class ProfileService {
       id: 'us-' + userId,
       userId,
       appearance: user.appearance,
+      username: user.username,
+      readingFont: user.readingFont,
       apiKeys: user.apiKeys,
       notifications: user.notifications,
       privacy: user.privacy,
@@ -218,6 +241,8 @@ export class ProfileService {
             name: user.name,
             email: user.email,
             appearance: user.appearance,
+            username: user.username,
+            reading_font: user.readingFont,
             notifications: user.notifications,
             api_keys: user.apiKeys,
             two_factor_enabled: user.twoFactorEnabled,
@@ -233,9 +258,11 @@ export class ProfileService {
       id: user.id,
       email: user.email,
       name: user.name,
+      username: user.username ?? '',
       role: user.role || 'user',
       twoFactorEnabled: !!user.twoFactorEnabled,
       appearance: user.appearance || 'system',
+      readingFont: user.readingFont || DEFAULT_READING_FONT,
       notifications: user.notifications || {
         emailSummaries: true,
         practiceReminders: true,
@@ -379,9 +406,11 @@ export class ProfileService {
         id: profile.id,
         name: profile.name,
         email: profile.email,
+        username: profile.username,
         role: profile.role,
         twoFactorEnabled: profile.twoFactorEnabled,
         appearance: profile.appearance,
+        readingFont: profile.readingFont,
         notifications: profile.notifications,
         privacy: profile.privacy
       },

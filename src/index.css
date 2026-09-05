@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--app-reading-font);
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Custom dark scrollbar configurations */
@@ -21,15 +26,19 @@
   background: #2d2d34;
 }
 
+:root {
+  --app-reading-font: 'Anthropic Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
 html {
   scroll-behavior: smooth;
 }
 
-/* Custom glow animations and layouts */
 body {
   margin: 0;
   background-color: #f8fafc;
   color: #09090b;
+  font-family: var(--app-reading-font);
 }
 
 html.dark body {
