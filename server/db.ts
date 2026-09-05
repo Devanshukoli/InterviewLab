@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { GeneratedQuestion, Evaluation, InterviewSession } from '../src/shared/types';
+import { GeneratedQuestion, Evaluation, InterviewSession, ReadingFontId } from '../src/shared/types';
 
 export type { GeneratedQuestion, Evaluation, InterviewSession };
 
@@ -23,11 +23,13 @@ export interface User {
   passwordHash: string;
   role: 'user' | 'admin';
   name: string;
+  username?: string;
   twoFactorEnabled?: boolean;
   twoFactorSecret?: string;
   pendingTwoFactorSecret?: string;
   backupCodes?: string[];
   appearance?: 'light' | 'dark' | 'system';
+  readingFont?: ReadingFontId;
   apiKeys?: {
     gemini?: string;
     openai?: string;
@@ -136,6 +138,8 @@ export interface UserSettings {
   id: string;
   userId: string;
   appearance?: 'light' | 'dark' | 'system';
+  username?: string;
+  readingFont?: ReadingFontId;
   apiKeys?: {
     gemini?: string;
     openai?: string;

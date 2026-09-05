@@ -1,9 +1,35 @@
 import { GeneratedQuestion, CoachingReport } from './agent-types';
 
+export const READING_FONT_IDS = [
+  'anthropic-serif',
+  'anthropic-sans',
+  'system-ui',
+  'dyslexic-friendly',
+] as const;
+export type ReadingFontId = (typeof READING_FONT_IDS)[number];
+export const DEFAULT_READING_FONT: ReadingFontId = 'anthropic-sans';
+
+export const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 24;
+
+export const USERNAME_INVALID_MESSAGE =
+  'Username must be 3–24 characters and use only letters, numbers, and underscores';
+
+export function isValidUsername(value: string | undefined): boolean {
+  if (value === undefined || value === '') return true;
+  return (
+    value.length >= USERNAME_MIN_LENGTH &&
+    value.length <= USERNAME_MAX_LENGTH &&
+    USERNAME_PATTERN.test(value)
+  );
+}
+
 export interface UserProfile {
   id: string;
   email: string;
   name: string;
+  username?: string;
   role: 'user' | 'admin';
   avatarUrl?: string;
   twoFactorEnabled?: boolean;
@@ -13,6 +39,7 @@ export interface UserProfile {
     anthropic?: string;
   };
   appearance?: 'light' | 'dark' | 'system';
+  readingFont?: ReadingFontId;
   notifications?: {
     emailSummaries: boolean;
     practiceReminders: boolean;

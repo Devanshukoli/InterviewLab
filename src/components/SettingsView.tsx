@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   User, 
   Sun, 
@@ -20,12 +20,25 @@ import {
   RefreshCw,
   Download,
   Database,
-  FileText
+  FileText,
+  ChevronDown
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { fetchWithAuth } from '../lib/auth';
 import { applyTheme, getStoredTheme } from '../lib/theme';
 import { logoutUser } from '../lib/auth';
+import {
+  applyReadingFont,
+  DEFAULT_READING_FONT,
+  getStoredReadingFont,
+  parseReadingFontId,
+  preloadReadingFontStylesheets,
+  previewReadingFont,
+  READING_FONTS,
+  revertReadingFontPreview,
+  type ReadingFontId,
+} from '../lib/reading-font';
+import { isValidUsername, USERNAME_INVALID_MESSAGE } from '../shared/types/domain-types';
 
 interface SettingsViewProps {
   user: UserProfile | null;
@@ -50,6 +63,12 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   // General Settings
   const [name, setName] = useState(user?.name);
   const [email, setEmail] = useState(user?.email);
+  const [username, setUsername] = useState(user?.username ?? '');
+  const [readingFont, setReadingFont] = useState<ReadingFontId>(() =>
+    parseReadingFontId(user?.readingFont ?? getStoredReadingFont())
+  );
+  const [fontMenuOpen, setFontMenuOpen] = useState(false);
+  const fontMenuRef = useRef<HTMLDivElement>(null);
 
   // Appearance
   const [appearance, setAppearance] = useState<'light' | 'dark' | 'system'>(() => user?.appearance || getStoredTheme());
@@ -243,9 +262,19 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    return () => {
+      revertReadingFontPreview();
+    };
+  }, []);
+
+  useEffect(() => {
     if (user) {
       setName(user.name || '');
       setEmail(user.email || '');
+      setUsername(user.username ?? '');
+      const savedFont = parseReadingFontId(user.readingFont ?? DEFAULT_READING_FONT);
+      setReadingFont(savedFont);
+      applyReadingFont(savedFont);
       setAppearance(user.appearance || 'system');
       applyTheme(user.appearance || 'system');
       setTwoFactorEnabled(user.twoFactorEnabled || false);
@@ -261,8 +290,33 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       setSearchHistoryCleared(user.privacy?.searchHistoryCleared ?? false);
     } else {
       applyTheme(getStoredTheme());
+      previewReadingFont(getStoredReadingFont());
     }
   }, [user]);
+
+  useEffect(() => {
+    if (activeTab === 'general') {
+      preloadReadingFontStylesheets();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!fontMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!fontMenuRef.current?.contains(event.target as Node)) {
+        setFontMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFontMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [fontMenuOpen]);
 
   const handleExportData = async () => {
     setIsExporting(true);
@@ -359,6 +413,12 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const handleAppearanceChange = (mode: 'light' | 'dark' | 'system') => {
     setAppearance(mode);
     applyTheme(mode);
+  };
+
+  const handleReadingFontChange = (id: ReadingFontId) => {
+    setReadingFont(id);
+    previewReadingFont(id);
+    setFontMenuOpen(false);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -517,13 +577,20 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setError(null);
+    const trimmedUsername = (username ?? '').trim();
+    if (!isValidUsername(trimmedUsername)) {
+      setError(USERNAME_INVALID_MESSAGE);
+      return;
+    }
+    setIsSaving(true);
     try {
       await onUpdateUser({
         name,
         email,
+        username: trimmedUsername,
         appearance,
+        readingFont,
         twoFactorEnabled,
         apiKeys: {
           gemini: geminiKey,
@@ -543,6 +610,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
         }
       });
 
+      applyReadingFont(readingFont);
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (err: any) {
@@ -640,6 +708,64 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500 font-mono"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Username</label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Optional"
+                    autoComplete="username"
+                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500 font-mono"
+                  />
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-500">Optional. 3–24 letters, numbers, or underscores.</p>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 pt-1">
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Font</label>
+                  <div ref={fontMenuRef} className="relative">
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={fontMenuOpen}
+                      onClick={() => setFontMenuOpen((open) => !open)}
+                      className="inline-flex items-center gap-1.5 text-sm text-zinc-800 dark:text-zinc-200 cursor-pointer hover:opacity-80"
+                      style={{ fontFamily: READING_FONTS[readingFont].cssFamily }}
+                    >
+                      <span>{READING_FONTS[readingFont].label}</span>
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                    </button>
+                    {fontMenuOpen && (
+                      <div
+                        role="listbox"
+                        className="absolute right-0 z-20 mt-2 min-w-[220px] rounded-xl border border-zinc-200 dark:border-zinc-700/80 bg-white dark:bg-zinc-900 py-1.5 shadow-lg shadow-black/10 dark:shadow-black/40"
+                      >
+                        {Object.values(READING_FONTS).map((font) => {
+                          const isSelected = readingFont === font.id;
+                          return (
+                            <button
+                              key={font.id}
+                              type="button"
+                              role="option"
+                              aria-selected={isSelected}
+                              onClick={() => handleReadingFontChange(font.id)}
+                              className={`w-full flex items-center justify-between gap-6 px-3.5 py-2.5 text-left text-[15px] cursor-pointer ${
+                                isSelected
+                                  ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50'
+                                  : 'text-zinc-800 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800/70'
+                              }`}
+                              style={{ fontFamily: font.cssFamily }}
+                            >
+                              <span>{font.label}</span>
+                              {isSelected ? <Check className="w-4 h-4 shrink-0 text-blue-500" strokeWidth={2.5} /> : <span className="w-4 h-4 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
