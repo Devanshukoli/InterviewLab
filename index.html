@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>InterviewOps | AI-powered SRE Prep</title>
-    <!-- Premium Fonts matching Elegant Dark archetype -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/gh/devchauhann/fonts@v1.1.0/cdn/api/css?family=AnthropicSans&weights=400;500;600;700" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
       (function() {
         const theme = localStorage.getItem('theme') || 'light';
@@ -17,14 +17,26 @@
         } else {
           document.documentElement.classList.remove('dark');
         }
+
+        const fonts = {
+          'anthropic-serif': "'Anthropic Serif', ui-serif, Georgia, serif",
+          'anthropic-sans': "'Anthropic Sans', ui-sans-serif, system-ui, sans-serif",
+          'system-ui': 'ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif',
+          'dyslexic-friendly': "'Atkinson Hyperlegible', ui-sans-serif, system-ui, sans-serif",
+          'atkinson-hyperlegible': "'Atkinson Hyperlegible', ui-sans-serif, system-ui, sans-serif"
+        };
+        const stored = localStorage.getItem('reading-font');
+        const id = stored === 'atkinson-hyperlegible' ? 'dyslexic-friendly' : (stored && fonts[stored] ? stored : 'anthropic-sans');
+        document.documentElement.dataset.readingFont = id;
+        document.documentElement.style.setProperty('--app-reading-font', fonts[id]);
       })();
     </script>
     <style>
       body {
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: var(--app-reading-font);
       }
       pre, code, .font-mono {
-        font-family: 'JetBrains Mono', monospace !important;
+        font-family: 'JetBrains Mono', ui-monospace, monospace !important;
       }
     </style>
   </head>

@@ -1,9 +1,24 @@
 import { z } from 'zod';
+import {
+  isValidUsername,
+  READING_FONT_IDS,
+  USERNAME_INVALID_MESSAGE,
+} from '../../src/shared/types/domain-types';
 
 export const updateProfileSchema = z.object({
   name: z.string().optional(),
   email: z.string().email('Invalid email address').optional(),
+  username: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    z
+      .string()
+      .optional()
+      .refine(isValidUsername, {
+        message: USERNAME_INVALID_MESSAGE,
+      })
+  ),
   appearance: z.enum(['light', 'dark', 'system']).optional(),
+  readingFont: z.enum(READING_FONT_IDS).optional(),
   twoFactorEnabled: z.boolean().optional(),
   apiKeys: z.object({
     gemini: z.string().optional(),
