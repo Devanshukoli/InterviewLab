@@ -209,7 +209,18 @@ export async function getLlmClientForUser(userId: string, requestedProvider?: st
 
   let targetKey = requestedProvider ? validKeys.find(k => k.provider === requestedProvider) : undefined;
   if (!targetKey) {
-    targetKey = validKeys.find(k => k.isPrimary) || validKeys[0];
+    targetKey = validKeys.find(k => k.isPrimary);
+  }
+  if (!targetKey) {
+    targetKey = validKeys[0];
+    if (targetKey) {
+      try {
+        await ByokService.setPrimary(userId, targetKey.provider);
+        targetKey = { ...targetKey, isPrimary: true };
+      } catch (err) {
+        logger.warn('Failed to persist interview provider after primary fallback:', err);
+      }
+    }
   }
 
   const record = await ByokService.getKeyRecord(userId, targetKey.provider);

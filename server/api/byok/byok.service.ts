@@ -44,23 +44,59 @@ function rowToRecord(row: any): UserApiKeyRecord {
   };
 }
 
-function keysFromMemory(userId: string, userUuid: string): UserKeyResponseDto[] {
-  const keys: UserKeyResponseDto[] = [];
+function timestampMs(value?: string): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+/** Newest valid key first; explicit id tie-breaker. Used to choose a durable primary. */
+function compareKeyRecordsForPrimary(a: UserApiKeyRecord, b: UserApiKeyRecord): number {
+  if (a.isValid !== b.isValid) return a.isValid ? -1 : 1;
+  const updated = timestampMs(b.updatedAt) - timestampMs(a.updatedAt);
+  if (updated !== 0) return updated;
+  const created = timestampMs(b.createdAt) - timestampMs(a.createdAt);
+  if (created !== 0) return created;
+  return b.id.localeCompare(a.id);
+}
+
+function recordsForUser(userId: string, userUuid: string): UserApiKeyRecord[] {
+  const records: UserApiKeyRecord[] = [];
   for (const record of db.userApiKeys.values()) {
     if (record.userId === userId || record.userId === userUuid) {
-      keys.push({
-        id: record.id,
-        provider: record.provider,
-        keyLastFour: record.keyLastFour,
-        preferredModel: record.preferredModel,
-        isValid: record.isValid,
-        lastValidatedAt: record.lastValidatedAt,
-        isPrimary: Boolean(record.isPrimary)
-      });
+      records.push(record);
     }
   }
-  keys.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
-  return keys;
+  return records;
+}
+
+function toKeyDto(record: UserApiKeyRecord): UserKeyResponseDto {
+  return {
+    id: record.id,
+    provider: record.provider,
+    keyLastFour: record.keyLastFour,
+    preferredModel: record.preferredModel,
+    isValid: record.isValid,
+    lastValidatedAt: record.lastValidatedAt,
+    isPrimary: Boolean(record.isPrimary)
+  };
+}
+
+function keysFromMemory(userId: string, userUuid: string): UserKeyResponseDto[] {
+  return recordsForUser(userId, userUuid)
+    .sort((a, b) => {
+      const primary = Number(b.isPrimary) - Number(a.isPrimary);
+      if (primary !== 0) return primary;
+      return compareKeyRecordsForPrimary(a, b);
+    })
+    .map(toKeyDto);
+}
+
+function pickDeterministicPrimaryRecord(records: UserApiKeyRecord[]): UserApiKeyRecord | undefined {
+  if (records.length === 0) return undefined;
+  const primaries = records.filter(record => record.isPrimary);
+  if (primaries.length === 1) return primaries[0];
+  return [...records].sort(compareKeyRecordsForPrimary)[0];
 }
 
 async function fetchUserApiKeyRows(userUuid: string): Promise<any[]> {
@@ -68,7 +104,16 @@ async function fetchUserApiKeyRows(userUuid: string): Promise<any[]> {
   if (!supabase) return [];
 
   const run = (columns: string) =>
-    unwrap(supabase.from('user_api_keys').select(columns).eq('user_id', userUuid));
+    unwrap(
+      supabase
+        .from('user_api_keys')
+        .select(columns)
+        .eq('user_id', userUuid)
+        .order('is_valid', { ascending: false })
+        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+    );
 
   try {
     const data = await run(
@@ -150,13 +195,31 @@ export class ByokService {
         logger.warn('🔮 Failed to query user_api_keys from Supabase:', err);
         const cached = keysFromMemory(userId, userUuid);
         if (cached.length > 0) {
-          return cached;
+          await ByokService.ensureSinglePrimary(userId);
+          return keysFromMemory(userId, userUuid);
         }
         throw err;
       }
     }
 
+    await ByokService.ensureSinglePrimary(userId);
     return keysFromMemory(userId, userUuid);
+  }
+
+  /** Persist exactly one primary when a user has keys but zero or multiple primaries. */
+  static async ensureSinglePrimary(userId: string): Promise<UserKeyResponseDto | null> {
+    const userUuid = stringToUUID(userId);
+    const records = recordsForUser(userId, userUuid);
+    const chosen = pickDeterministicPrimaryRecord(records);
+    if (!chosen) return null;
+
+    const primaries = records.filter(record => record.isPrimary);
+    if (primaries.length === 1 && primaries[0].id === chosen.id) {
+      return toKeyDto(chosen);
+    }
+
+    await ByokService.setPrimary(userId, chosen.provider);
+    return toKeyDto({ ...chosen, isPrimary: true });
   }
 
   static async hasValidKey(userId: string): Promise<boolean> {
@@ -210,9 +273,6 @@ export class ByokService {
         last_validated_at: now,
         updated_at: now
       };
-      if (userApiKeysHasPrimaryColumn) {
-        payload.is_primary = true;
-      }
       try {
         await unwrap(supabase.from('user_api_keys').upsert(payload, { onConflict: 'user_id,provider' }));
       } catch (supaErr) {
