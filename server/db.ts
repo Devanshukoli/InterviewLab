@@ -224,6 +224,7 @@ export interface UserApiKeyRecord {
   keyLastFour: string;
   preferredModel?: string;
   isValid: boolean;
+  isPrimary: boolean;
   lastValidatedAt: string;
   createdAt: string;
   updatedAt: string;

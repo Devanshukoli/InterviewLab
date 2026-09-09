@@ -25,8 +25,30 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { fetchWithAuth } from '../lib/auth';
+import ConfirmDialog from './ConfirmDialog';
 import { applyTheme, getStoredTheme, previewTheme, revertThemePreview, ThemeMode } from '../lib/theme';
 import { logoutUser } from '../lib/auth';
+
+type ByokProvider = 'openai' | 'anthropic' | 'gemini';
+
+type ByokKey = {
+  id: string;
+  provider: ByokProvider;
+  keyHint: string;
+  preferredModel?: string;
+  isPrimary: boolean;
+  isValidated: boolean;
+};
+
+const BYOK_PROVIDERS: { id: ByokProvider; label: string }[] = [
+  { id: 'gemini', label: 'Google Gemini' },
+  { id: 'openai', label: 'OpenAI' },
+  { id: 'anthropic', label: 'Anthropic Claude' },
+];
+
+function providerLabel(provider: string): string {
+  return BYOK_PROVIDERS.find((item) => item.id === provider)?.label || provider;
+}
 import {
   applyReadingFont,
   DEFAULT_READING_FONT,
@@ -94,39 +116,68 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [sessions, setSessions] = useState<UserSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
-  // Developer API Keys
   const [geminiKey, setGeminiKey] = useState(user?.apiKeys?.gemini || '');
   const [openaiKey, setOpenaiKey] = useState(user?.apiKeys?.openai || '');
   const [anthropicKey, setAnthropicKey] = useState(user?.apiKeys?.anthropic || '');
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
 
-  // BYOK API Keys State
-  const [byokKeys, setByokKeys] = useState<Array<{
-    id: string;
-    provider: string;
-    keyHint: string;
-    label?: string;
-    isPrimary: boolean;
-    isValidated: boolean;
-    createdAt: string;
-  }>>([]);
+  const [byokKeys, setByokKeys] = useState<ByokKey[]>([]);
   const [isLoadingByokKeys, setIsLoadingByokKeys] = useState(false);
   const [byokError, setByokError] = useState<string | null>(null);
   const [byokSuccess, setByokSuccess] = useState<string | null>(null);
-  const [newKeyProvider, setNewKeyProvider] = useState<'gemini' | 'openai' | 'anthropic'>('gemini');
+  const [newKeyProvider, setNewKeyProvider] = useState<ByokProvider>('gemini');
   const [newKeyValue, setNewKeyValue] = useState('');
   const [newKeyLabel, setNewKeyLabel] = useState('');
   const [isAddingKey, setIsAddingKey] = useState(false);
   const [validatingKeyId, setValidatingKeyId] = useState<string | null>(null);
+  const [modelsByProvider, setModelsByProvider] = useState<Partial<Record<ByokProvider, string[]>>>({});
+  const [loadingModels, setLoadingModels] = useState<Partial<Record<ByokProvider, boolean>>>({});
+  const [savingModelProvider, setSavingModelProvider] = useState<ByokProvider | null>(null);
+  const [keyPendingDelete, setKeyPendingDelete] = useState<ByokKey | null>(null);
+  const [isDeletingKey, setIsDeletingKey] = useState(false);
 
-  const fetchByokKeys = async () => {
+  const loadModelsForKeys = async (keys: ByokKey[], seed?: { provider: ByokProvider; models: string[] }) => {
+    const next: Partial<Record<ByokProvider, string[]>> = {};
+    if (seed) next[seed.provider] = seed.models;
+    const failed: string[] = [];
+
+    await Promise.all(
+      keys
+        .filter((key) => key.isValidated)
+        .map(async (key) => {
+          if (seed && seed.provider === key.provider) return;
+          setLoadingModels((prev) => ({ ...prev, [key.provider]: true }));
+          try {
+            const res = await fetchWithAuth(`/api/byok/models/${key.provider}`);
+            const json = await res.json();
+            if (!res.ok || !json.success || !Array.isArray(json.data?.availableModels)) {
+              throw new Error(json.message || `Could not list models for ${providerLabel(key.provider)}`);
+            }
+            next[key.provider] = json.data.availableModels;
+          } catch (err: any) {
+            failed.push(err.message || `Could not list models for ${providerLabel(key.provider)}`);
+          } finally {
+            setLoadingModels((prev) => ({ ...prev, [key.provider]: false }));
+          }
+        })
+    );
+
+    setModelsByProvider((prev) => ({ ...prev, ...next }));
+    if (failed.length > 0) {
+      setByokError(failed.join(' '));
+    }
+  };
+
+  const fetchByokKeys = async (seed?: { provider: ByokProvider; models: string[] }) => {
     setIsLoadingByokKeys(true);
     setByokError(null);
     try {
       const res = await fetchWithAuth('/api/byok/keys');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        setByokKeys(json.data);
+        const keys = json.data as ByokKey[];
+        setByokKeys(keys);
+        await loadModelsForKeys(keys, seed);
       }
     } catch (err: any) {
       setByokError(err.message || 'Failed to load API keys');
@@ -165,10 +216,15 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       if (!res.ok || !json.success) {
         throw new Error(json.message || 'Failed to validate and save key');
       }
-      setByokSuccess(`Successfully validated and saved ${newKeyProvider.toUpperCase()} API key!`);
+      const listed = json.availableModels || json.data?.availableModels || [];
+      setByokSuccess(`Saved and validated the ${providerLabel(newKeyProvider)} key.`);
       setNewKeyValue('');
       setNewKeyLabel('');
-      await fetchByokKeys();
+      await fetchByokKeys(
+        Array.isArray(listed) && listed.length > 0
+          ? { provider: newKeyProvider, models: listed }
+          : undefined
+      );
       setTimeout(() => setByokSuccess(null), 4000);
     } catch (err: any) {
       setByokError(err.message || 'Failed to add API key');
@@ -189,7 +245,12 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       if (!res.ok || !json.success) {
         throw new Error(json.message || 'Key validation failed');
       }
-      setByokSuccess(`Key validation passed! Available models: ${(json.data?.models || []).join(', ')}`);
+      const models = json.data?.availableModels || json.data?.models || [];
+      const key = byokKeys.find((item) => item.id === id);
+      if (key && Array.isArray(models)) {
+        setModelsByProvider((prev) => ({ ...prev, [key.provider]: models }));
+      }
+      setByokSuccess('Key validation passed.');
       await fetchByokKeys();
       setTimeout(() => setByokSuccess(null), 4000);
     } catch (err: any) {
@@ -199,21 +260,26 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     }
   };
 
-  const handleDeleteKey = async (id: string) => {
-    if (!confirm('Are you sure you want to remove this API key?')) return;
+  const handleDeleteKey = async () => {
+    if (!keyPendingDelete) return;
+    setIsDeletingKey(true);
     setByokError(null);
     try {
-      const res = await fetchWithAuth(`/api/byok/keys/${id}`, {
+      const res = await fetchWithAuth(`/api/byok/keys/${keyPendingDelete.id}`, {
         method: 'DELETE'
       });
       const json = await res.json();
-      if (json.success) {
-        setByokSuccess('API key removed');
-        await fetchByokKeys();
-        setTimeout(() => setByokSuccess(null), 3000);
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to delete key');
       }
+      setByokSuccess('API key removed');
+      setKeyPendingDelete(null);
+      await fetchByokKeys();
+      setTimeout(() => setByokSuccess(null), 3000);
     } catch (err: any) {
       setByokError(err.message || 'Failed to delete key');
+    } finally {
+      setIsDeletingKey(false);
     }
   };
 
@@ -230,6 +296,31 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       setByokError(err.message || 'Failed to set key as primary');
     }
   };
+
+  const handlePreferredModelChange = async (key: ByokKey, model: string) => {
+    setSavingModelProvider(key.provider);
+    setByokError(null);
+    try {
+      const res = await fetchWithAuth(`/api/byok/keys/${key.provider}/model`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model })
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to save model');
+      }
+      setByokKeys((prev) =>
+        prev.map((item) => (item.id === key.id ? { ...item, preferredModel: model } : item))
+      );
+    } catch (err: any) {
+      setByokError(err.message || 'Failed to save model');
+    } finally {
+      setSavingModelProvider(null);
+    }
+  };
+
+  const interviewKeyId = byokKeys.find((k) => k.isPrimary)?.id ?? byokKeys[0]?.id;
 
   // Notifications
   const [emailSummaries, setEmailSummaries] = useState(user?.notifications?.emailSummaries ?? true);
@@ -1038,24 +1129,24 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
               </div>
             )}
 
-            {/* 4. DEVELOPER API KEYS */}
             {activeTab === 'developer' && (
               <div className="space-y-6">
-                <div className="border-b border-zinc-200 dark:border-zinc-800/80 pb-3 flex justify-between items-end">
-                  <div>
+                <div className="border-b border-zinc-200 dark:border-zinc-800/80 pb-3 flex justify-between items-end gap-4">
+                  <div className="min-w-0">
                     <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Bring Your Own API Key (BYOK)</h2>
-                    <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Configure user-owned API keys. Plaintext keys are encrypted with AES-256-GCM and decrypted only in server memory for LLM execution.</p>
+                    <p className="text-base text-zinc-600 dark:text-zinc-400 mt-1.5 leading-relaxed">
+                      Save your own provider keys. Keys are encrypted with AES-256-GCM and decrypted only in server memory when interviews run. Pick a provider and a model below for generation.
+                    </p>
                   </div>
                   <button
                     type="button"
-                    onClick={fetchByokKeys}
-                    className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 font-mono"
+                    onClick={() => fetchByokKeys()}
+                    className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 font-mono shrink-0"
                   >
                     <RefreshCw className="w-3 h-3" /> Refresh
                   </button>
                 </div>
 
-                {/* Status Banners */}
                 {byokError && (
                   <div className="p-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 rounded-xl text-xs text-red-800 dark:text-red-300 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
@@ -1070,97 +1161,144 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                   </div>
                 )}
 
-                {/* Saved Keys List */}
                 <div className="space-y-3">
-                  <span className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider block">Your Saved API Keys</span>
+                  <span className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider block">Your Saved API Keys</span>
+
+                  {byokKeys.length > 1 && (
+                    <div className="space-y-2">
+                      <p className="text-sm text-zinc-600 dark:text-zinc-400">Interview provider</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {byokKeys.map((key) => (
+                          <button
+                            key={`primary-${key.id}`}
+                            type="button"
+                            onClick={() => handleSetPrimary(key.id)}
+                            className={`p-2.5 text-sm font-semibold rounded-xl border transition-all text-center ${
+                              key.id === interviewKeyId
+                                ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
+                                : 'bg-zinc-50 dark:bg-[#09090b] border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700'
+                            }`}
+                          >
+                            {providerLabel(key.provider)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   
                   {isLoadingByokKeys ? (
-                    <div className="p-4 text-center text-xs text-zinc-500 flex items-center justify-center gap-2">
+                    <div className="p-4 text-center text-sm text-zinc-500 flex items-center justify-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" /> Loading configured keys...
                     </div>
                   ) : byokKeys.length === 0 ? (
-                    <div className="p-4 bg-zinc-50 dark:bg-[#09090b] border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl text-center text-xs text-zinc-500">
+                    <div className="p-4 bg-zinc-50 dark:bg-[#09090b] border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl text-center text-sm text-zinc-500">
                       No API keys configured yet. Add an API key below to enable AI interview generation.
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {byokKeys.map(k => (
-                        <div key={k.id} className="p-3.5 bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold uppercase text-[10px] tracking-wider bg-blue-100 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">
-                                {k.provider}
-                              </span>
-                              {k.isPrimary && (
-                                <span className="font-bold text-[9px] bg-green-100 dark:bg-green-950/80 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">
-                                  PRIMARY
+                    <div className="space-y-3">
+                      {byokKeys.map((k) => {
+                        const models = modelsByProvider[k.provider] || [];
+                        const modelChoices =
+                          k.preferredModel && !models.includes(k.preferredModel)
+                            ? [k.preferredModel, ...models]
+                            : models;
+                        return (
+                        <div key={k.id} className="p-4 bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-xl space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                            <div className="space-y-1.5 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-xs tracking-wider bg-blue-100 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">
+                                  {providerLabel(k.provider)}
                                 </span>
-                              )}
-                              {k.isValidated ? (
-                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-semibold">
-                                  <Check className="w-3 h-3" /> Validated
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
-                                  Unvalidated
-                                </span>
-                              )}
-                              {k.label && <span className="text-zinc-500 font-medium">({k.label})</span>}
+                                {k.id === interviewKeyId && (
+                                  <span className="font-bold text-[10px] bg-green-100 dark:bg-green-950/80 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">
+                                    INTERVIEWS
+                                  </span>
+                                )}
+                                {k.isValidated ? (
+                                  <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+                                    <Check className="w-3 h-3" /> Validated
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold">
+                                    Unvalidated
+                                  </span>
+                                )}
+                              </div>
+                              <div className="font-mono text-zinc-700 dark:text-zinc-300 text-xs">
+                                Key: <span className="bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{k.keyHint}</span>
+                              </div>
                             </div>
-                            <div className="font-mono text-zinc-700 dark:text-zinc-300 text-[11px]">
-                              Key: <span className="bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{k.keyHint}</span>
+
+                            <div className="flex items-center gap-2 self-end sm:self-start">
+                              {k.id !== interviewKeyId && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetPrimary(k.id)}
+                                  className="px-2.5 py-1 text-xs rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
+                                >
+                                  Use for interviews
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleValidateKey(k.id)}
+                                disabled={validatingKeyId === k.id}
+                                className="px-2.5 py-1 text-xs rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white transition-colors flex items-center gap-1"
+                              >
+                                {validatingKeyId === k.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                <span>Validate</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setKeyPendingDelete(k)}
+                                className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg transition-colors"
+                                title="Delete Key"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 self-end sm:self-center">
-                            {!k.isPrimary && (
-                              <button
-                                type="button"
-                                onClick={() => handleSetPrimary(k.id)}
-                                className="px-2.5 py-1 text-[11px] rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
+                          <label className="block space-y-1.5">
+                            <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Model</span>
+                            <div className="relative">
+                              <select
+                                value={k.preferredModel || modelChoices[0] || ''}
+                                disabled={!k.isValidated || loadingModels[k.provider] || savingModelProvider === k.provider || modelChoices.length === 0}
+                                onChange={(event) => handlePreferredModelChange(k, event.target.value)}
+                                className="w-full appearance-none bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2.5 pr-8 text-sm text-zinc-900 dark:text-white focus:outline-none focus:border-blue-500 disabled:opacity-60"
                               >
-                                Set Primary
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleValidateKey(k.id)}
-                              disabled={validatingKeyId === k.id}
-                              className="px-2.5 py-1 text-[11px] rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white transition-colors flex items-center gap-1"
-                            >
-                              {validatingKeyId === k.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                              <span>Validate</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteKey(k.id)}
-                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg transition-colors"
-                              title="Delete Key"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                                {modelChoices.length === 0 ? (
+                                  <option value="">{loadingModels[k.provider] ? 'Loading models…' : 'No models listed yet'}</option>
+                                ) : (
+                                  modelChoices.map((model) => (
+                                    <option key={model} value={model}>
+                                      {model}
+                                    </option>
+                                  ))
+                                )}
+                              </select>
+                              <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                            </div>
+                          </label>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
 
-                {/* Add New Key Form */}
                 <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-4">
-                  <span className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider block">Add New LLM Provider Key</span>
+                  <span className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider block">Add New LLM Provider Key</span>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {[
-                      { id: 'gemini', label: 'Google Gemini' },
-                      { id: 'openai', label: 'OpenAI' },
-                      { id: 'anthropic', label: 'Anthropic Claude' }
-                    ].map(p => (
+                    {BYOK_PROVIDERS.map((p) => (
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => setNewKeyProvider(p.id as any)}
-                        className={`p-2.5 text-xs font-semibold rounded-xl border transition-all text-center ${
+                        onClick={() => setNewKeyProvider(p.id)}
+                        className={`p-2.5 text-sm font-semibold rounded-xl border transition-all text-center ${
                           newKeyProvider === p.id
                             ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
                             : 'bg-zinc-50 dark:bg-[#09090b] border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700'
@@ -1627,6 +1765,23 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
         </div>
 
       </div>
+
+      <ConfirmDialog
+        isOpen={Boolean(keyPendingDelete)}
+        title="Remove API key"
+        description={
+          keyPendingDelete
+            ? `This removes your ${providerLabel(keyPendingDelete.provider)} key (${keyPendingDelete.keyHint}). Interviews will stop using that provider until you add a key again.`
+            : ''
+        }
+        confirmLabel="Remove key"
+        danger
+        isBusy={isDeletingKey}
+        onConfirm={handleDeleteKey}
+        onClose={() => {
+          if (!isDeletingKey) setKeyPendingDelete(null);
+        }}
+      />
 
     </div>
   );
