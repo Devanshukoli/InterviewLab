@@ -116,7 +116,6 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [sessions, setSessions] = useState<UserSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
-  // Developer API Keys
   const [geminiKey, setGeminiKey] = useState(user?.apiKeys?.gemini || '');
   const [openaiKey, setOpenaiKey] = useState(user?.apiKeys?.openai || '');
   const [anthropicKey, setAnthropicKey] = useState(user?.apiKeys?.anthropic || '');
@@ -1122,7 +1121,6 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
               </div>
             )}
 
-            {/* 4. DEVELOPER API KEYS */}
             {activeTab === 'developer' && (
               <div className="space-y-6">
                 <div className="border-b border-zinc-200 dark:border-zinc-800/80 pb-3 flex justify-between items-end gap-4">
@@ -1141,7 +1139,6 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                   </button>
                 </div>
 
-                {/* Status Banners */}
                 {byokError && (
                   <div className="p-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 rounded-xl text-xs text-red-800 dark:text-red-300 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
@@ -1156,7 +1153,6 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                   </div>
                 )}
 
-                {/* Saved Keys List */}
                 <div className="space-y-3">
                   <span className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider block">Your Saved API Keys</span>
 
@@ -1285,7 +1281,6 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                   )}
                 </div>
 
-                {/* Add New Key Form */}
                 <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-4">
                   <span className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider block">Add New LLM Provider Key</span>
 

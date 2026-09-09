@@ -199,9 +199,6 @@ function instantiateProviderClient(provider: Provider, apiKey: string, model: st
   return new GeminiUserProvider(apiKey, model, userId);
 }
 
-/**
- * Gets LLM client for user, strictly requiring user to have configured a valid API key.
- */
 export async function getLlmClientForUser(userId: string, requestedProvider?: string): Promise<LLMProvider> {
   const userKeys = await ByokService.getUserKeys(userId);
   const validKeys = userKeys.filter(k => k.isValid);
@@ -226,9 +223,6 @@ export async function getLlmClientForUser(userId: string, requestedProvider?: st
   return instantiateProviderClient(record.provider, apiKey, model, userId);
 }
 
-/**
- * Helper to wrap getLlmClientForUser for legacy call signatures where provider/userId might be passed.
- */
 export async function getLLMProvider(requestedProvider?: string, userId?: string): Promise<LLMProvider> {
   const resolvedUserId = userId || 'usr-anonymous';
   return getLlmClientForUser(resolvedUserId, requestedProvider);

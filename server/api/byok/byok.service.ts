@@ -35,9 +35,6 @@ export class ByokService {
     return null;
   }
 
-  /**
-   * Helper to fetch user's raw key record from db or Supabase
-   */
   static async getKeyRecord(userId: string, provider: Provider): Promise<UserApiKeyRecord | null> {
     const memoryKey = `${userId}:${provider}`;
     let record = db.userApiKeys.get(memoryKey);
@@ -79,9 +76,6 @@ export class ByokService {
     return record || null;
   }
 
-  /**
-   * Gets all configured API keys for a user (without decrypted secret)
-   */
   static async getUserKeys(userId: string): Promise<UserKeyResponseDto[]> {
     const supabase = getSupabaseClient();
     const userUuid = stringToUUID(userId);
@@ -139,17 +133,11 @@ export class ByokService {
     return keys;
   }
 
-  /**
-   * Checks if user has at least one valid key configured
-   */
   static async hasValidKey(userId: string): Promise<boolean> {
     const keys = await ByokService.getUserKeys(userId);
     return keys.some(k => k.isValid);
   }
 
-  /**
-   * Saves or updates a user provider API key after live validation
-   */
   static async saveKey(
     userId: string,
     provider: Provider,
@@ -255,9 +243,6 @@ export class ByokService {
     }
   }
 
-  /**
-   * Delete key for a provider
-   */
   static async deleteKey(userId: string, provider: Provider): Promise<void> {
     const existing = await ByokService.getKeyRecord(userId, provider);
     const wasPrimary = Boolean(existing?.isPrimary);
@@ -283,9 +268,6 @@ export class ByokService {
     }
   }
 
-  /**
-   * Update preferred model for a provider
-   */
   static async updatePreferredModel(userId: string, provider: Provider, model: string): Promise<UserKeyResponseDto> {
     const record = await ByokService.getKeyRecord(userId, provider);
     if (!record) {
@@ -323,9 +305,6 @@ export class ByokService {
     };
   }
 
-  /**
-   * Test key connection live (either new plaintext key or existing saved key)
-   */
   static async testConnection(
     userId: string,
     provider: Provider,
@@ -343,7 +322,6 @@ export class ByokService {
 
     const res = await validateApiKeyAndGetModels(provider, keyToTest, userId);
 
-    // If testing an existing saved key, update its status
     const existing = await ByokService.getKeyRecord(userId, provider);
     if (existing && !plaintextKey) {
       existing.isValid = res.isValid;
@@ -366,9 +344,6 @@ export class ByokService {
     return res;
   }
 
-  /**
-   * Mark key as invalid in database
-   */
   static async markApiKeyInvalid(userId: string, provider: Provider): Promise<void> {
     const record = await ByokService.getKeyRecord(userId, provider);
     if (record) {
