@@ -1,0 +1,2 @@
+ALTER TABLE user_api_keys
+  ADD COLUMN IF NOT EXISTS is_primary BOOLEAN NOT NULL DEFAULT false;

@@ -212,7 +212,7 @@ export async function getLlmClientForUser(userId: string, requestedProvider?: st
 
   let targetKey = requestedProvider ? validKeys.find(k => k.provider === requestedProvider) : undefined;
   if (!targetKey) {
-    targetKey = validKeys[0];
+    targetKey = validKeys.find(k => k.isPrimary) || validKeys[0];
   }
 
   const record = await ByokService.getKeyRecord(userId, targetKey.provider);

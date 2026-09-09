@@ -18,6 +18,7 @@ export interface UserKeyResponseDto {
   preferredModel?: string;
   isValid: boolean;
   lastValidatedAt: string;
+  isPrimary: boolean;
 }
 
 export class ByokService {
@@ -62,6 +63,7 @@ export class ByokService {
               keyLastFour: data.key_last_four,
               preferredModel: data.preferred_model,
               isValid: data.is_valid,
+              isPrimary: Boolean(data.is_primary),
               lastValidatedAt: data.last_validated_at,
               createdAt: data.created_at,
               updatedAt: data.updated_at
@@ -88,7 +90,7 @@ export class ByokService {
       try {
         const { data } = await supabase
           .from('user_api_keys')
-          .select('id, user_id, provider, encrypted_key, key_last_four, preferred_model, is_valid, last_validated_at, created_at, updated_at')
+          .select('id, user_id, provider, encrypted_key, key_last_four, preferred_model, is_valid, is_primary, last_validated_at, created_at, updated_at')
           .eq('user_id', userUuid);
 
         if (Array.isArray(data)) {
@@ -102,6 +104,7 @@ export class ByokService {
               keyLastFour: row.key_last_four,
               preferredModel: row.preferred_model,
               isValid: row.is_valid,
+              isPrimary: Boolean(row.is_primary),
               lastValidatedAt: row.last_validated_at,
               createdAt: row.created_at,
               updatedAt: row.updated_at
@@ -114,7 +117,7 @@ export class ByokService {
     }
 
     const keys: UserKeyResponseDto[] = [];
-    for (const [k, record] of db.userApiKeys.entries()) {
+    for (const record of db.userApiKeys.values()) {
       if (record.userId === userId || record.userId === userUuid) {
         keys.push({
           id: record.id,
@@ -122,9 +125,15 @@ export class ByokService {
           keyLastFour: record.keyLastFour,
           preferredModel: record.preferredModel,
           isValid: record.isValid,
-          lastValidatedAt: record.lastValidatedAt
+          lastValidatedAt: record.lastValidatedAt,
+          isPrimary: Boolean(record.isPrimary)
         });
       }
+    }
+
+    keys.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+    if (keys.length > 0 && !keys.some((k) => k.isPrimary)) {
+      keys[0].isPrimary = true;
     }
 
     return keys;
@@ -166,6 +175,7 @@ export class ByokService {
       keyLastFour,
       preferredModel: chosenModel,
       isValid: true,
+      isPrimary: true,
       lastValidatedAt: now,
       createdAt: now,
       updatedAt: now
@@ -184,6 +194,7 @@ export class ByokService {
           key_last_four: keyLastFour,
           preferred_model: chosenModel,
           is_valid: true,
+          is_primary: true,
           last_validated_at: now,
           updated_at: now
         }, { onConflict: 'user_id,provider' }));
@@ -192,6 +203,8 @@ export class ByokService {
       }
     }
 
+    await ByokService.setPrimary(userId, provider);
+
     return {
       key: {
         id: record.id,
@@ -199,16 +212,55 @@ export class ByokService {
         keyLastFour: record.keyLastFour,
         preferredModel: record.preferredModel,
         isValid: record.isValid,
-        lastValidatedAt: record.lastValidatedAt
+        lastValidatedAt: record.lastValidatedAt,
+        isPrimary: true
       },
       availableModels: validation.availableModels
     };
+  }
+
+  static async setPrimary(userId: string, provider: Provider): Promise<void> {
+    const target = await ByokService.getKeyRecord(userId, provider);
+    if (!target) {
+      throw new AppError(`No API key configured for provider ${provider}`, 404);
+    }
+
+    const userUuid = stringToUUID(userId);
+    const now = new Date().toISOString();
+
+    for (const [memoryKey, existing] of db.userApiKeys.entries()) {
+      if (existing.userId === userId || existing.userId === userUuid) {
+        existing.isPrimary = existing.provider === provider;
+        existing.updatedAt = now;
+        db.userApiKeys.set(memoryKey, existing);
+      }
+    }
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await unwrap(
+          supabase.from('user_api_keys').update({ is_primary: false, updated_at: now }).eq('user_id', userUuid)
+        );
+        await unwrap(
+          supabase
+            .from('user_api_keys')
+            .update({ is_primary: true, updated_at: now })
+            .eq('user_id', userUuid)
+            .eq('provider', provider)
+        );
+      } catch (e) {
+        logger.warn('🔮 Failed to persist primary API key in Supabase:', e);
+      }
+    }
   }
 
   /**
    * Delete key for a provider
    */
   static async deleteKey(userId: string, provider: Provider): Promise<void> {
+    const existing = await ByokService.getKeyRecord(userId, provider);
+    const wasPrimary = Boolean(existing?.isPrimary);
     const memoryKey = `${userId}:${provider}`;
     db.userApiKeys.delete(memoryKey);
     invalidateModelCache(userId, provider);
@@ -220,6 +272,13 @@ export class ByokService {
         await unwrap(supabase.from('user_api_keys').delete().eq('user_id', userUuid).eq('provider', provider));
       } catch (e) {
         logger.warn('🔮 Failed to delete user_api_key from Supabase:', e);
+      }
+    }
+
+    if (wasPrimary) {
+      const remaining = await ByokService.getUserKeys(userId);
+      if (remaining[0]) {
+        await ByokService.setPrimary(userId, remaining[0].provider);
       }
     }
   }
@@ -259,7 +318,8 @@ export class ByokService {
       keyLastFour: record.keyLastFour,
       preferredModel: record.preferredModel,
       isValid: record.isValid,
-      lastValidatedAt: record.lastValidatedAt
+      lastValidatedAt: record.lastValidatedAt,
+      isPrimary: Boolean(record.isPrimary)
     };
   }
 
