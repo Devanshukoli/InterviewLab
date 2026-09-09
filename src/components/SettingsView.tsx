@@ -139,6 +139,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const loadModelsForKeys = async (keys: ByokKey[], seed?: { provider: ByokProvider; models: string[] }) => {
     const next: Partial<Record<ByokProvider, string[]>> = {};
     if (seed) next[seed.provider] = seed.models;
+    const failed: string[] = [];
 
     await Promise.all(
       keys
@@ -149,10 +150,12 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
           try {
             const res = await fetchWithAuth(`/api/byok/models/${key.provider}`);
             const json = await res.json();
-            if (json.success && Array.isArray(json.data?.availableModels)) {
-              next[key.provider] = json.data.availableModels;
+            if (!res.ok || !json.success || !Array.isArray(json.data?.availableModels)) {
+              throw new Error(json.message || `Could not list models for ${providerLabel(key.provider)}`);
             }
-          } catch {
+            next[key.provider] = json.data.availableModels;
+          } catch (err: any) {
+            failed.push(err.message || `Could not list models for ${providerLabel(key.provider)}`);
           } finally {
             setLoadingModels((prev) => ({ ...prev, [key.provider]: false }));
           }
@@ -160,6 +163,9 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     );
 
     setModelsByProvider((prev) => ({ ...prev, ...next }));
+    if (failed.length > 0) {
+      setByokError(failed.join(' '));
+    }
   };
 
   const fetchByokKeys = async (seed?: { provider: ByokProvider; models: string[] }) => {
@@ -313,6 +319,8 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       setSavingModelProvider(null);
     }
   };
+
+  const interviewKeyId = byokKeys.find((k) => k.isPrimary)?.id ?? byokKeys[0]?.id;
 
   // Notifications
   const [emailSummaries, setEmailSummaries] = useState(user?.notifications?.emailSummaries ?? true);
@@ -1166,7 +1174,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                             type="button"
                             onClick={() => handleSetPrimary(key.id)}
                             className={`p-2.5 text-sm font-semibold rounded-xl border transition-all text-center ${
-                              key.isPrimary
+                              key.id === interviewKeyId
                                 ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
                                 : 'bg-zinc-50 dark:bg-[#09090b] border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700'
                             }`}
@@ -1202,7 +1210,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                                 <span className="font-bold text-xs tracking-wider bg-blue-100 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">
                                   {providerLabel(k.provider)}
                                 </span>
-                                {k.isPrimary && (
+                                {k.id === interviewKeyId && (
                                   <span className="font-bold text-[10px] bg-green-100 dark:bg-green-950/80 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">
                                     INTERVIEWS
                                   </span>
@@ -1223,7 +1231,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                             </div>
 
                             <div className="flex items-center gap-2 self-end sm:self-start">
-                              {!k.isPrimary && (
+                              {k.id !== interviewKeyId && (
                                 <button
                                   type="button"
                                   onClick={() => handleSetPrimary(k.id)}
