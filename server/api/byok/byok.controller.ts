@@ -1,17 +1,16 @@
 import { Request, Response } from 'express';
 import { ByokService } from './byok.service';
 import { catchAsync, BadRequestError } from '../../middleware/error_handling';
-import { Provider, validateApiKeyAndGetModels } from '../../services/model-registry';
+import { Provider } from '../../services/model-registry';
 
 export class ByokController {
   static getKeys = catchAsync(async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.id || 'usr-anonymous';
     const keys = await ByokService.getUserKeys(userId);
-    const mapped = keys.map((k, i) => ({
+    const mapped = keys.map((k) => ({
       ...k,
       keyHint: `••••••••${k.keyLastFour}`,
       isValidated: k.isValid,
-      isPrimary: i === 0
     }));
     res.json({ success: true, data: mapped });
   });
@@ -33,7 +32,11 @@ export class ByokController {
       throw new BadRequestError('API key string is required');
     }
 
-    const result = await ByokService.saveKey(userId, provider as Provider, apiKey, preferredModel);
+    const result = await ByokService.saveKey(userId, provider as Provider, apiKey, preferredModel, {
+      email: req.user?.email,
+      name: req.user?.name,
+      role: req.user?.role
+    });
     res.json({ success: true, data: result.key, availableModels: result.availableModels });
   });
 
@@ -74,6 +77,7 @@ export class ByokController {
       throw new BadRequestError(`No API key found matching ${keyIdentifier}`);
     }
 
+    await ByokService.setPrimary(userId, record.provider);
     res.json({ success: true, message: `Set ${record.provider.toUpperCase()} as primary key` });
   });
 

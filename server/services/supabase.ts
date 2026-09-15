@@ -65,3 +65,31 @@ export async function unwrap(
   }
   return data;
 }
+
+export function isUndefinedColumnError(err: unknown, column: string): boolean {
+  const pg = toPostgrestError(err);
+  if (!pg) return false;
+  const columnName = column.toLowerCase();
+  const haystack = [pg.code, pg.message, pg.details, pg.hint]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (!haystack.includes(columnName)) return false;
+  return (
+    pg.code === '42703' ||
+    pg.code === 'PGRST204' ||
+    haystack.includes('does not exist') ||
+    haystack.includes('schema cache')
+  );
+}
+
+function toPostgrestError(err: unknown): PostgrestError | null {
+  if (!err || typeof err !== 'object') return null;
+  const wrapped = (err as { supabaseError?: PostgrestError }).supabaseError;
+  if (wrapped && typeof wrapped.message === 'string') return wrapped;
+  const maybe = err as Partial<PostgrestError>;
+  if (typeof maybe.message === 'string' && maybe.code) {
+    return maybe as PostgrestError;
+  }
+  return null;
+}
