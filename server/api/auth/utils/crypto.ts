@@ -1,26 +1,15 @@
 import crypto from 'crypto';
 import { logger } from '../../../observability';
 
-const DEFAULT_BYOK_MASTER_KEY = process.env.DEFAULT_BYOK_MASTER_KEY;
-
-if (!process.env.BYOK_ENCRYPTION_KEY) {
-  throw new Error('BYOK_ENCRYPTION_KEY is not set');
-}
-
-if (!process.env.ENCRYPTION_SECRET) {
-  throw new Error('ENCRYPTION_SECRET is not set');
-}
-
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET is not set');
-}
-
 /** AES-256 needs 32 bytes (64 hex chars). A 64-byte hex key is hashed down. */
 export function resolveByokEncryptionKeyHex(raw?: string): string {
-  const hex = String(raw || DEFAULT_BYOK_MASTER_KEY)
+  const hex = String(raw ?? '')
     .trim()
     .replace(/^['"]|['"]$/g, '')
     .replace(/\s+/g, '');
+  if (!hex) {
+    throw new Error('BYOK_ENCRYPTION_KEY is not set');
+  }
   if (/^[0-9a-fA-F]{64}$/.test(hex)) return hex.toLowerCase();
   if (/^[0-9a-fA-F]{128}$/.test(hex)) {
     return crypto.createHash('sha256').update(Buffer.from(hex, 'hex')).digest('hex');
@@ -29,7 +18,11 @@ export function resolveByokEncryptionKeyHex(raw?: string): string {
 }
 
 function getMasterKey(): Buffer {
-  const hexKey = resolveByokEncryptionKeyHex(process.env.BYOK_ENCRYPTION_KEY);
+  const raw = process.env.BYOK_ENCRYPTION_KEY;
+  if (!raw) {
+    throw new Error('BYOK_ENCRYPTION_KEY is not set');
+  }
+  const hexKey = resolveByokEncryptionKeyHex(raw);
   return Buffer.from(hexKey, 'hex');
 }
 
@@ -74,7 +67,10 @@ export function decryptApiKey(encryptedPayload: string): string {
  */
 export function encrypt(text: string): string {
   if (!text) return '';
-  const secret = (process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET) as string;
+  const secret = process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('ENCRYPTION_SECRET is not set');
+  }
   const key = crypto.createHash('sha256').update(secret).digest(); // Ensures 32 bytes key
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
@@ -92,7 +88,10 @@ export function decrypt(encryptedText: string): string {
   if (parts.length !== 2) return encryptedText; // Fallback to raw string if not matching encrypted format
   try {
     const [ivHex, encryptedHex] = parts;
-    const secret = (process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET) as string;
+    const secret = process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('ENCRYPTION_SECRET is not set');
+    }
     const key = crypto.createHash('sha256').update(secret).digest();
     const iv = Buffer.from(ivHex, 'hex');
     const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
