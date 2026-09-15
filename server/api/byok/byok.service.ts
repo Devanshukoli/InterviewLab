@@ -138,6 +138,62 @@ function stripPrimaryColumn<T extends Record<string, unknown>>(payload: T): Omit
   return rest;
 }
 
+export interface ByokOwnerIdentity {
+  email?: string;
+  name?: string;
+  role?: string;
+}
+
+async function ensureProfileForUser(userUuid: string, identity?: ByokOwnerIdentity): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  const existing = await unwrap(
+    supabase.from('profiles').select('id').eq('id', userUuid).maybeSingle()
+  );
+  if (existing?.id) return;
+
+  if (identity?.email) {
+    const byEmail = await unwrap(
+      supabase.from('profiles').select('id').eq('email', identity.email).maybeSingle()
+    );
+    if (byEmail?.id) {
+      if (byEmail.id !== userUuid) {
+        throw new AppError(
+          'This account is missing a matching profile row. Sign out and sign in again, then save the key.',
+          409
+        );
+      }
+      return;
+    }
+  }
+
+  const email = identity?.email?.trim();
+  if (!email) {
+    throw new AppError('Cannot save the API key because this account has no email on the session.', 400);
+  }
+
+  try {
+    await unwrap(
+      supabase.from('profiles').insert([
+        {
+          id: userUuid,
+          email,
+          name: identity?.name?.trim() || email.split('@')[0] || 'User',
+          role: identity?.role === 'admin' ? 'admin' : 'user'
+        }
+      ])
+    );
+  } catch (err) {
+    const again = await unwrap(
+      supabase.from('profiles').select('id').eq('id', userUuid).maybeSingle()
+    );
+    if (again?.id) return;
+    logger.error('Failed to create profile before saving API key:', err);
+    throw new AppError('Could not save the API key to storage. Try again.', 503);
+  }
+}
+
 export class ByokService {
   static async getKeyByIdentifier(userId: string, keyIdentifier: string): Promise<UserApiKeyRecord | null> {
     if (['openai', 'anthropic', 'gemini'].includes(keyIdentifier)) {
@@ -231,7 +287,8 @@ export class ByokService {
     userId: string,
     provider: Provider,
     apiKey: string,
-    preferredModel?: string
+    preferredModel?: string,
+    identity?: ByokOwnerIdentity
   ): Promise<{ key: UserKeyResponseDto; availableModels: string[] }> {
     const validation = await validateApiKeyAndGetModels(provider, apiKey, userId);
     if (!validation.isValid) {
@@ -263,6 +320,7 @@ export class ByokService {
 
     const supabase = getSupabaseClient();
     if (supabase) {
+      await ensureProfileForUser(userUuid, identity);
       const payload: Record<string, unknown> = {
         user_id: userUuid,
         provider,
@@ -274,21 +332,41 @@ export class ByokService {
         updated_at: now
       };
       try {
-        await unwrap(supabase.from('user_api_keys').upsert(payload, { onConflict: 'user_id,provider' }));
+        const saved = await unwrap(
+          supabase
+            .from('user_api_keys')
+            .upsert(payload, { onConflict: 'user_id,provider' })
+            .select('id')
+            .maybeSingle()
+        );
+        if (saved?.id) {
+          record.id = saved.id;
+          db.userApiKeys.set(memoryKey, record);
+        }
       } catch (supaErr) {
         if (userApiKeysHasPrimaryColumn && isUndefinedColumnError(supaErr, 'is_primary')) {
           userApiKeysHasPrimaryColumn = false;
-          try {
-            await unwrap(
-              supabase.from('user_api_keys').upsert(stripPrimaryColumn(payload), { onConflict: 'user_id,provider' })
-            );
-          } catch (retryErr) {
-            logger.warn('🔮 Failed to save user_api_key to Supabase:', retryErr);
+          const saved = await unwrap(
+            supabase
+              .from('user_api_keys')
+              .upsert(stripPrimaryColumn(payload), { onConflict: 'user_id,provider' })
+              .select('id')
+              .maybeSingle()
+          );
+          if (saved?.id) {
+            record.id = saved.id;
+            db.userApiKeys.set(memoryKey, record);
           }
         } else {
-          logger.warn('🔮 Failed to save user_api_key to Supabase:', supaErr);
+          logger.error('Failed to save user_api_key to Supabase:', supaErr);
+          throw new AppError('Could not save the API key to storage. Try again.', 503);
         }
       }
+    } else {
+      throw new AppError(
+        'API key storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local.',
+        503
+      );
     }
 
     await ByokService.setPrimary(userId, provider);
@@ -344,7 +422,8 @@ export class ByokService {
             'user_api_keys.is_primary is not in the database yet. Run sql/07_byok_primary.sql. Primary stays in process memory only.'
           );
         } else {
-          logger.warn('🔮 Failed to persist primary API key in Supabase:', e);
+          logger.error('Failed to persist primary API key in Supabase:', e);
+          throw new AppError('Could not set the interview provider in storage. Try again.', 503);
         }
       }
     }

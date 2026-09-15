@@ -1,14 +1,35 @@
 import crypto from 'crypto';
 import { logger } from '../../../observability';
 
-/**
- * Master key getter for BYOK API key encryption
- */
-function getMasterKey(): Buffer {
-  const hexKey = process.env.BYOK_ENCRYPTION_KEY || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-  if (!/^[0-9a-fA-F]{64}$/.test(hexKey)) {
-    throw new Error('BYOK_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+const DEFAULT_BYOK_MASTER_KEY = process.env.DEFAULT_BYOK_MASTER_KEY;
+
+if (!process.env.BYOK_ENCRYPTION_KEY) {
+  throw new Error('BYOK_ENCRYPTION_KEY is not set');
+}
+
+if (!process.env.ENCRYPTION_SECRET) {
+  throw new Error('ENCRYPTION_SECRET is not set');
+}
+
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is not set');
+}
+
+/** AES-256 needs 32 bytes (64 hex chars). A 64-byte hex key is hashed down. */
+export function resolveByokEncryptionKeyHex(raw?: string): string {
+  const hex = String(raw || DEFAULT_BYOK_MASTER_KEY)
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/\s+/g, '');
+  if (/^[0-9a-fA-F]{64}$/.test(hex)) return hex.toLowerCase();
+  if (/^[0-9a-fA-F]{128}$/.test(hex)) {
+    return crypto.createHash('sha256').update(Buffer.from(hex, 'hex')).digest('hex');
   }
+  throw new Error('BYOK_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+}
+
+function getMasterKey(): Buffer {
+  const hexKey = resolveByokEncryptionKeyHex(process.env.BYOK_ENCRYPTION_KEY);
   return Buffer.from(hexKey, 'hex');
 }
 
@@ -53,7 +74,7 @@ export function decryptApiKey(encryptedPayload: string): string {
  */
 export function encrypt(text: string): string {
   if (!text) return '';
-  const secret = process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET || 'interviewops-default-jwt-secret-key-2026-safe-fallback';
+  const secret = (process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET) as string;
   const key = crypto.createHash('sha256').update(secret).digest(); // Ensures 32 bytes key
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
@@ -71,7 +92,7 @@ export function decrypt(encryptedText: string): string {
   if (parts.length !== 2) return encryptedText; // Fallback to raw string if not matching encrypted format
   try {
     const [ivHex, encryptedHex] = parts;
-    const secret = process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET || 'interviewops-default-jwt-secret-key-2026-safe-fallback';
+    const secret = (process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET) as string;
     const key = crypto.createHash('sha256').update(secret).digest();
     const iv = Buffer.from(ivHex, 'hex');
     const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
@@ -124,4 +145,3 @@ export function verifyPassword(password: string, storedHash: string): boolean {
     return false;
   }
 }
-

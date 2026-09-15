@@ -32,7 +32,11 @@ export class ByokController {
       throw new BadRequestError('API key string is required');
     }
 
-    const result = await ByokService.saveKey(userId, provider as Provider, apiKey, preferredModel);
+    const result = await ByokService.saveKey(userId, provider as Provider, apiKey, preferredModel, {
+      email: req.user?.email,
+      name: req.user?.name,
+      role: req.user?.role
+    });
     res.json({ success: true, data: result.key, availableModels: result.availableModels });
   });
 

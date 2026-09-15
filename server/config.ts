@@ -1,21 +1,16 @@
+import path from 'path';
 import { z } from 'zod';
 import dotenv from 'dotenv';
 import { EnvError } from './middleware/error_handling';
+import { resolveByokEncryptionKeyHex } from './api/auth/utils/crypto';
 
-// Load environment variables
-dotenv.config();
-
-const defaultMasterKey = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
-  BYOK_ENCRYPTION_KEY: z.string().optional().transform(v => {
-    const key = (v && v.trim()) || process.env.BYOK_ENCRYPTION_KEY || defaultMasterKey;
-    return key;
-  }).refine(key => typeof key === 'string' && /^[0-9a-fA-F]{64}$/.test(key), {
-    message: 'BYOK_ENCRYPTION_KEY must be a 64-character hex string (32-byte key)'
-  }),
+  BYOK_ENCRYPTION_KEY: z.string().optional().transform(v => resolveByokEncryptionKeyHex(v || process.env.BYOK_ENCRYPTION_KEY)),
   SUPABASE_URL: z.string().optional().default(''),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
