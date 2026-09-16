@@ -6,6 +6,7 @@ import { NotFoundError, AppError } from '../../middleware/error_handling';
 import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { defaultEvaluationAgent } from '../../modules/agents/evaluation-agent';
 import { ByokService } from '../byok/byok.service';
+import { historyClientQuestionKey, historyQuestionKeyByDbId } from './history-question-keys';
 
 export function ensureUUID(id?: string): string {
   return stringToUUID(id);
@@ -768,21 +769,22 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
             .select('*')
             .eq('session_id', sessionUuid);
 
-          const questions: GeneratedQuestion[] = Array.isArray(qRows) ? qRows.map((q, idx) => ({
-            id: `q-${idx + 1}`,
+          const questionRows = Array.isArray(qRows) ? qRows : [];
+          const questions: GeneratedQuestion[] = questionRows.map((q, idx) => ({
+            id: historyClientQuestionKey(idx),
             questionText: q.question_text,
             type: q.type,
             topic: q.topic,
             difficulty: q.difficulty,
             expectedConcepts: q.expected_concepts || []
-          })) : [];
+          }));
+          const questionKeyByDbId = historyQuestionKeyByDbId(questionRows);
 
           const answers: Record<string, string> = {};
           if (Array.isArray(aRows)) {
             aRows.forEach(a => {
-              // Extract question id suffix or map by matching question
-              const qIdx = questions.findIndex(q => stringToUUID(id + '-' + q.id) === a.question_id);
-              const qKey = qIdx !== -1 ? `q-${qIdx + 1}` : a.question_id;
+              const qKey = questionKeyByDbId.get(String(a.question_id).toLowerCase());
+              if (!qKey) return;
               answers[qKey] = a.answer_text;
             });
           }
@@ -790,8 +792,8 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
           const evaluations: Record<string, Evaluation> = {};
           if (Array.isArray(eRows)) {
             eRows.forEach(e => {
-              const qIdx = questions.findIndex(q => stringToUUID(id + '-' + q.id) === e.question_id);
-              const qKey = qIdx !== -1 ? `q-${qIdx + 1}` : e.question_id;
+              const qKey = questionKeyByDbId.get(String(e.question_id).toLowerCase());
+              if (!qKey) return;
               evaluations[qKey] = {
                 id: e.id,
                 questionId: qKey,
