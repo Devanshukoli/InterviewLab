@@ -1,7 +1,7 @@
-# InterviewOps 🔬
+# InterviewLabs 🔬
 > **AI-Powered Technical Interview Simulator & Observability Platform**
 
-InterviewOps is an enterprise-grade technical interview preparation platform built specifically for Systems Engineers, Site Reliability Engineers (SREs), and Software Architects. By evaluating a candidate's resume against specific Job Descriptions (JDs), InterviewOps deploys a multi-agent AI pipeline to generate targeted technical scenarios, evaluate answers against architectural best practices, and trace every pipeline step with full OpenTelemetry instrumentation.
+InterviewLabs is an enterprise-grade technical interview preparation platform built specifically for Systems Engineers, Site Reliability Engineers (SREs), and Software Architects. By evaluating a candidate's resume against specific Job Descriptions (JDs), InterviewLabs deploys a multi-agent AI pipeline to generate targeted technical scenarios, evaluate answers against architectural best practices, and trace every pipeline step with full OpenTelemetry instrumentation.
 
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Devanshukoli/InterviewLab)
@@ -9,11 +9,11 @@ InterviewOps is an enterprise-grade technical interview preparation platform bui
 
 ## 🎯 Introduction
 
-### What is InterviewOps all about?
-InterviewOps bridges the gap between passive interview study and active, scenario-based technical evaluations. It reads uploaded resumes and job descriptions, parses technical requirements, constructs customized scenario questions (system design, troubleshooting, behavioral, and domain deep dives), evaluates candidate responses in real-time, and generates structured coaching reports. Crucially, the entire system is built like an enterprise production microservice, complete with OpenTelemetry tracing and Supabase persistence.
+### What is InterviewLabs all about?
+InterviewLabs bridges the gap between passive interview study and active, scenario-based technical evaluations. It reads uploaded resumes and job descriptions, parses technical requirements, constructs customized scenario questions (system design, troubleshooting, behavioral, and domain deep dives), evaluates candidate responses in real-time, and generates structured coaching reports. Crucially, the entire system is built like an enterprise production microservice, complete with OpenTelemetry tracing and Supabase persistence.
 
 ### Why should you take a look at this project?
-Unlike typical tutorial projects or simple wrapper UI applications, InterviewOps demonstrates **full-stack engineering rigor**:
+Unlike typical tutorial projects or simple wrapper UI applications, InterviewLabs demonstrates **full-stack engineering rigor**:
 - **Production Architecture**: Strict separation of concerns (Controllers, Services, DTOs, Routes, Middlewares) using Express and TypeScript.
 - **Multi-Agent Orchestration**: Specialized modular agents (`/server/modules/agents`) for resume parsing, JD analysis, gap identification, question synthesis, answer evaluation, and career coaching.
 - **Observability-First**: Built-in OpenTelemetry instrumentation (`@opentelemetry/sdk-node`) capturing trace spans across agent execution steps with an in-memory buffer route for debugging (`/api/telemetry`).
@@ -21,7 +21,7 @@ Unlike typical tutorial projects or simple wrapper UI applications, InterviewOps
 - **Resilient AI Pipeline**: Abstracted LLM integration supporting Google Gemini API (`@google/genai`), OpenAI, and Anthropic SDKs with built-in retry and fallback capabilities.
 
 ### How is it useful for interview preparation compared to other platforms?
-1. **JD-Matched Context**: Most platforms ask generic LeetCode or canned questions. InterviewOps matches your real resume against a specific target Job Description to simulate the exact interviews companies will run.
+1. **JD-Matched Context**: Most platforms ask generic LeetCode or canned questions. InterviewLabs matches your real resume against a specific target Job Description to simulate the exact interviews companies will run.
 2. **Deep Architectural Scenarios**: Questions probe system design trade-offs, fault tolerance, distributed tracing, and real production incidents rather than basic syntax trivia.
 3. **Instant Actionable Feedback**: Answers are evaluated against missing technical concepts, clarity ratings, and architectural completeness with concrete suggestions for improvement.
 4. **Learning Metric Trackers**: Automatically updates a confidence heat map across technical topics (e.g., OpenTelemetry, System Design, Node.js Concurrency) so you know exactly where your gaps are.
@@ -37,10 +37,10 @@ Unlike typical tutorial projects or simple wrapper UI applications, InterviewOps
 
 ## 📁 Project Structure
 
-InterviewOps follows a modular monorepo structure separating full-stack Express server code, SQL migrations, shared domain types, and React client interfaces:
+InterviewLabs follows a modular monorepo structure separating full-stack Express server code, SQL migrations, shared domain types, and React client interfaces:
 
 ```
-interviewops/
+InterviewLabs/
 ├── .env.example                               # Template for required environment variables
 ├── .gitignore                                 # Git ignore file configuration
 ├── LICENSE                                    # Open-source license file
@@ -172,7 +172,7 @@ interviewops/
 ## 🏗️ Architecture & AI Pipeline Overview
 
 ### 🤖 Multi-Agent Orchestration
-When a user launches a new practice session, InterviewOps coordinates a multi-agent workflow:
+When a user launches a new practice session, InterviewLabs coordinates a multi-agent workflow:
 
 1. **Resume Agent (`resume-agent.ts`)**: Ingests uploaded PDF or text resumes, extracting candidate tech stack, domain depth, experience level, and key projects.
 2. **JD Agent (`jd-agent.ts`)**: Parses target Job Description text, mapping key responsibilities, mandatory system competencies, and preferred tools.
@@ -208,7 +208,7 @@ When a user launches a new practice session, InterviewOps coordinates a multi-ag
 
 ## 📋 Prerequisites
 
-To run and inspect InterviewOps locally, ensure you have the following installed:
+To run and inspect InterviewLabs locally, ensure you have the following installed:
 
 - **Node.js**: `v18.x`, `v20.x`, or `v22.x`
 - **Package Manager**: `npm` (v9+)
@@ -220,12 +220,12 @@ To run and inspect InterviewOps locally, ensure you have the following installed
 
 ## ⚡ Quick Start & Development Setup
 
-Follow these step-by-step instructions to get InterviewOps running locally:
+Follow these step-by-step instructions to get InterviewLabs running locally:
 
 ### Step 1: Clone & Install Dependencies
 ```bash
-git clone https://github.com/your-org/interviewops.git
-cd interviewops
+git clone https://github.com/your-org/InterviewLabs.git
+cd InterviewLabs
 
 # Install npm dependencies
 npm install
@@ -260,7 +260,7 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 # OpenTelemetry Exporter Endpoint
-OTEL_SERVICE_NAME=interviewops-api
+OTEL_SERVICE_NAME=InterviewLabs-api
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
 
@@ -273,7 +273,7 @@ If using Supabase or PostgreSQL:
 5. Execute `/sql/04_resume_updates.sql` to apply resume field schema enhancements.
 6. Execute `/sql/05_security_and_2fa.sql` to enable 2FA/TOTP tables and security log tracking.
 
-*Note: If Supabase credentials are not provided in `.env`, InterviewOps automatically operates in local in-memory fallback mode (`server/db.ts`).*
+*Note: If Supabase credentials are not provided in `.env`, InterviewLabs automatically operates in local in-memory fallback mode (`server/db.ts`).*
 
 ### Step 4: Launch Development Server
 ```bash
@@ -336,7 +336,7 @@ All API routes are prefixed under `/api` and protected with JWT authorization he
 
 ## ⚠️ Known Gaps & Production Roadmap
 
-To scale InterviewOps into a multi-tenant platform handling heavy concurrent engineer traffic, the following architectural enhancements are planned:
+To scale InterviewLabs into a multi-tenant platform handling heavy concurrent engineer traffic, the following architectural enhancements are planned:
 
 - 🚨 **Asynchronous LLM Queue (BullMQ)**: AI generation and evaluation requests currently run within the Express HTTP request-response lifecycle. Introducing a Redis-backed queue (BullMQ) will allow asynchronous background job processing for zero-timeout execution under heavy API latency.
 - 🚨 **Distributed Redis Cache**: Active practice session states currently use in-memory state with Supabase sync. Distributing state via Redis (`ioredis`) will enable seamless horizontal scaling across container instances.
