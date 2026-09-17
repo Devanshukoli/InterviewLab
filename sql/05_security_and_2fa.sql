@@ -7,6 +7,7 @@
 ALTER TABLE public.profiles 
 ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS two_factor_secret TEXT,
+ADD COLUMN IF NOT EXISTS pending_two_factor_secret TEXT,
 ADD COLUMN IF NOT EXISTS backup_codes JSONB DEFAULT '[]'::jsonb,
 ADD COLUMN IF NOT EXISTS last_password_change TIMESTAMPTZ DEFAULT NOW();
 
