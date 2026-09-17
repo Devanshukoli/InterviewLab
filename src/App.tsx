@@ -12,6 +12,7 @@ import LearningProgressView from './components/LearningProgressView';
 import SettingsView from './components/SettingsView';
 import OnboardingApiKeyModal from './components/OnboardingApiKeyModal';
 import AppLogo from './components/AppLogo';
+import AppBootSplash from './components/AppBootSplash';
 
 import { 
   UserProfile, 
@@ -32,6 +33,7 @@ import {
 export default function App() {
   // Authentication State
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
@@ -174,6 +176,8 @@ export default function App() {
     } catch (e) {
       clearAuthTokens();
       setUser(null);
+    } finally {
+      setAuthChecked(true);
     }
   };
 
@@ -450,6 +454,10 @@ export default function App() {
   };
 
   // Unauthenticated View -> Render Landing Page
+  if (!authChecked) {
+    return <AppBootSplash />;
+  }
+
   if (!user) {
     return (
       <>
