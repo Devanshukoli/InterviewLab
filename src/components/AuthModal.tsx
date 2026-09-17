@@ -397,18 +397,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
                 Two-Factor Verification
               </h2>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">
                 Enter the 6-digit code from your authenticator app or an 8-character recovery code for <span className="font-mono text-zinc-800 dark:text-zinc-200 font-semibold">{twoFactorState.email}</span>.
               </p>
             </div>
 
             <form onSubmit={handleVerify2FALogin} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                   Authentication or Backup Code
                 </label>
                 <div className="relative">
-                  <KeyRound className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-2.5" />
+                  <KeyRound className="w-4 h-4 text-zinc-400 dark:text-zinc-500 absolute left-3 top-3" />
                   <input
                     type="text"
                     required
@@ -416,17 +416,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                     value={totpCode}
                     onChange={(e) => setTotpCode(e.target.value)}
                     placeholder="123456 or a1b2-c3d4"
-                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm font-mono text-center tracking-widest text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500"
+                    autoComplete="one-time-code"
+                    className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2.5 text-base font-mono text-center tracking-widest text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
 
-              {error && <p className="text-xs text-red-500 dark:text-red-400 font-mono text-center">{error}</p>}
+              {error && <p className="text-sm text-red-500 dark:text-red-400 font-mono text-center">{error}</p>}
 
               <button
                 type="submit"
                 disabled={isLoading || !totpCode.trim()}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-60"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-60"
               >
                 {isLoading ? (
                   <>

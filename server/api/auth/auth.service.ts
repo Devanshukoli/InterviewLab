@@ -432,36 +432,58 @@ export class AuthService {
     }
   }
 
-  static async setup2FA(userId: string): Promise<{ secret: string; uri: string }> {
-    let userObj: User | undefined;
-    const supabase = getSupabaseClient();
+  static profileRowToUser(data: {
+    id: string;
+    email: string;
+    password_hash?: string;
+    name: string;
+    role?: string;
+    two_factor_enabled?: boolean;
+    two_factor_secret?: string | null;
+    pending_two_factor_secret?: string | null;
+    backup_codes?: string[] | null;
+  }): User {
+    return {
+      id: data.id,
+      email: data.email,
+      passwordHash: data.password_hash || '',
+      name: data.name,
+      role: (data.role as User['role']) || 'user',
+      twoFactorEnabled: !!data.two_factor_enabled,
+      twoFactorSecret: data.two_factor_secret || undefined,
+      pendingTwoFactorSecret: data.pending_two_factor_secret || undefined,
+      backupCodes: data.backup_codes || []
+    };
+  }
 
+  static async findUserById(userId: string): Promise<User | undefined> {
+    const userUuid = stringToUUID(userId);
+    const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const data = await unwrap(supabase.from('profiles').select('*').eq('id', stringToUUID(userId)).maybeSingle());
+        const data = await unwrap(
+          supabase.from('profiles').select('*').eq('id', userUuid).maybeSingle()
+        );
         if (data) {
-          userObj = {
-            id: data.id,
-            email: data.email,
-            passwordHash: data.password_hash || '',
-            name: data.name,
-            role: data.role || 'user'
-          };
+          const user = AuthService.profileRowToUser(data);
+          db.users.set(user.email, user);
+          return user;
         }
       } catch (e) {
-        logger.warn('🔮 [AuthService] Error loading user for 2FA setup:', e);
+        logger.warn('🔮 [AuthService] Error loading user for 2FA:', e);
       }
     }
 
-    if (!userObj) {
-      for (const u of db.users.values()) {
-        if (u.id === userId) {
-          userObj = u;
-          break;
-        }
+    for (const u of db.users.values()) {
+      if (u.id === userId || stringToUUID(u.id) === userUuid) {
+        return u;
       }
     }
+    return undefined;
+  }
 
+  static async setup2FA(userId: string): Promise<{ secret: string; uri: string }> {
+    const userObj = await AuthService.findUserById(userId);
     if (!userObj) {
       throw new UnauthorizedError('User not found');
     }
@@ -470,30 +492,37 @@ export class AuthService {
     userObj.pendingTwoFactorSecret = secret;
     db.users.set(userObj.email, userObj);
 
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ pending_two_factor_secret: secret })
+          .eq('id', stringToUUID(userId));
+      } catch (e) {
+        logger.warn('🔮 [AuthService] Failed to persist pending 2FA secret:', e);
+      }
+    }
+
     const uri = TotpService.getOtpAuthUri(secret, userObj.email, 'InterviewOps');
     return { secret, uri };
   }
 
-  static async verifyAndEnable2FA(userId: string, code: string): Promise<{ user: User; backupCodes: string[] }> {
-    let userObj: User | undefined;
-    for (const u of db.users.values()) {
-      if (u.id === userId) {
-        userObj = u;
-        break;
-      }
-    }
-
-    if (!userObj || !userObj.pendingTwoFactorSecret) {
+  static async verifyAndEnable2FA(userId: string, code: string): Promise<{ backupCodes: string[] }> {
+    const userObj = await AuthService.findUserById(userId);
+    const pendingSecret = userObj?.pendingTwoFactorSecret;
+    if (!userObj || !pendingSecret) {
       throw new BadRequestError('2FA setup session expired or not initialized. Please click setup again.');
     }
 
-    const isValid = TotpService.verifyToken(code.trim(), userObj.pendingTwoFactorSecret);
+    const digits = code.trim().replace(/\s+/g, '');
+    const isValid = TotpService.verifyToken(digits, pendingSecret);
     if (!isValid) {
       throw new BadRequestError('Invalid 6-digit verification code. Check your authenticator app time and try again.');
     }
 
     userObj.twoFactorEnabled = true;
-    userObj.twoFactorSecret = userObj.pendingTwoFactorSecret;
+    userObj.twoFactorSecret = pendingSecret;
     delete userObj.pendingTwoFactorSecret;
 
     const backupCodes = TotpService.generateBackupCodes(8);
@@ -508,6 +537,7 @@ export class AuthService {
           .update({
             two_factor_enabled: true,
             two_factor_secret: userObj.twoFactorSecret,
+            pending_two_factor_secret: null,
             backup_codes: backupCodes
           })
           .eq('id', stringToUUID(userId));
@@ -516,18 +546,11 @@ export class AuthService {
       }
     }
 
-    return { user: userObj, backupCodes };
+    return { backupCodes };
   }
 
   static async disable2FA(userId: string): Promise<{ user: User }> {
-    let userObj: User | undefined;
-    for (const u of db.users.values()) {
-      if (u.id === userId) {
-        userObj = u;
-        break;
-      }
-    }
-
+    const userObj = await AuthService.findUserById(userId);
     if (!userObj) {
       throw new UnauthorizedError('User not found');
     }
@@ -546,6 +569,7 @@ export class AuthService {
           .update({
             two_factor_enabled: false,
             two_factor_secret: null,
+            pending_two_factor_secret: null,
             backup_codes: []
           })
           .eq('id', stringToUUID(userId));

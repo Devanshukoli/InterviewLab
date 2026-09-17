@@ -566,7 +566,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       if (json.success && json.data) {
         setSetup2FAData(json.data);
       } else {
-        throw new Error('Failed to initiate 2FA setup');
+        throw new Error(json.error || json.message || 'Failed to initiate 2FA setup');
       }
     } catch (err: any) {
       setTotpError(err.message || 'Failed to initialize 2FA');
@@ -591,7 +591,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        throw new Error(json.message || 'Invalid verification code');
+        throw new Error(json.error || json.message || 'Invalid verification code');
       }
       setTwoFactorEnabled(true);
       if (json.data?.backupCodes) {
@@ -599,7 +599,11 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       }
       setSetup2FAData(null);
       setTotpCode('');
-      onUpdateUser({ twoFactorEnabled: true });
+      try {
+        await onUpdateUser({ twoFactorEnabled: true });
+      } catch {
+        // 2FA is already enabled on the server. Keep the local enabled state.
+      }
     } catch (err: any) {
       setTotpError(err.message || 'Verification failed');
     } finally {
@@ -608,7 +612,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   };
 
   const handleDisable2FA = async () => {
-    if (!confirm('Are you sure you want to disable Two-Factor Authentication? Your account will be less secure.')) {
+    if (!confirm('Revoke two-factor authentication? You will not be asked for an authenticator code on the next sign-in.')) {
       return;
     }
     try {
@@ -620,10 +624,12 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
         setTwoFactorEnabled(false);
         setBackupCodes([]);
         setSetup2FAData(null);
-        onUpdateUser({ twoFactorEnabled: false });
+        await onUpdateUser({ twoFactorEnabled: false });
+      } else {
+        setTotpError(json.error || json.message || 'Failed to revoke 2FA');
       }
     } catch (err) {
-      alert('Failed to disable 2FA');
+      setTotpError('Failed to revoke 2FA');
     }
   };
 
@@ -676,8 +682,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveSettings = async () => {
     setError(null);
     const trimmedUsername = (username ?? '').trim();
     if (!isValidUsername(trimmedUsername)) {
@@ -692,7 +697,6 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
         username: trimmedUsername,
         appearance,
         readingFont,
-        twoFactorEnabled,
         apiKeys: {
           gemini: geminiKey,
           openai: openaiKey,
@@ -784,7 +788,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
         {/* Settings Form Body (3 cols) */}
         <div className="md:col-span-3 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] rounded-xl p-6 space-y-6 shadow-sm">
           
-          <form onSubmit={handleSave} className="space-y-6">
+          <div className="space-y-6">
             
             {/* 1. GENERAL */}
             {activeTab === 'general' && (
@@ -906,11 +910,11 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
             {/* 3. SECURITY & 2FA */}
             {activeTab === 'security' && (
               <div className="space-y-6">
-                <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider border-b border-zinc-200 dark:border-zinc-800/80 pb-2">Security & Authentication</h2>
+                <h2 className="text-base font-bold text-zinc-900 dark:text-white uppercase tracking-wider border-b border-zinc-200 dark:border-zinc-800/80 pb-2">Security & Authentication</h2>
 
                 {/* Password Change Form */}
                 <div className="space-y-3">
-                  <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-300 block">Change Password</span>
+                  <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-300 block">Change Password</span>
                   {passError && (
                     <div className="p-2.5 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-600 dark:text-red-300 flex items-center gap-2">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -954,19 +958,19 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                 <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800/80 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-bold text-zinc-900 dark:text-white block">Two-Factor Authentication (TOTP 2FA)</span>
-                      <span className="text-[11px] text-zinc-600 dark:text-zinc-400">Secure your account with Google Authenticator, 1Password, or Authy.</span>
+                      <span className="text-sm font-bold text-zinc-900 dark:text-white block">Two-Factor Authentication (TOTP 2FA)</span>
+                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Secure your account with Google Authenticator, 1Password, or Authy.</span>
                     </div>
                     {twoFactorEnabled ? (
-                      <span className="text-[10px] bg-green-100 dark:bg-green-950/80 border border-green-300 dark:border-green-800 text-green-700 dark:text-green-300 font-bold px-2.5 py-1 rounded-md flex items-center gap-1">
-                        <Check className="w-3 h-3" /> ENABLED
+                      <span className="text-sm bg-green-100 dark:bg-green-950/80 border border-green-300 dark:border-green-800 text-green-700 dark:text-green-300 font-bold px-2.5 py-1 rounded-md flex items-center gap-1">
+                        <Check className="w-4 h-4" /> Enabled
                       </span>
                     ) : (
                       <button
                         type="button"
                         onClick={handleStart2FASetup}
                         disabled={isSettingUp2FA}
-                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-3.5 py-1.5 rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-50"
                       >
                         {isSettingUp2FA ? <Loader2 className="w-3 h-3 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
                         <span>Setup 2FA</span>
@@ -974,12 +978,16 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                     )}
                   </div>
 
+                  {totpError && !setup2FAData && (
+                    <p className="text-sm text-red-600 dark:text-red-400 font-mono">{totpError}</p>
+                  )}
+
                   {/* 2FA Setup Flow Drawer */}
                   {setup2FAData && !twoFactorEnabled && (
                     <div className="p-6 bg-zinc-50 dark:bg-[#09090b] border border-blue-200 dark:border-blue-900/60 rounded-xl space-y-6 animate-fadeIn">
                       <div className="flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800 pb-3">
-                        <span className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Scan QR Code or Enter Key</span>
-                        <button type="button" onClick={() => setSetup2FAData(null)} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">Cancel</button>
+                        <span className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Scan QR Code or Enter Key</span>
+                        <button type="button" onClick={() => setSetup2FAData(null)} className="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">Cancel</button>
                       </div>
 
                       {/* Prominent Centered QR Code Box */}
@@ -990,19 +998,19 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                             alt="2FA QR Code" 
                             className="w-64 h-64 sm:w-80 sm:h-80 object-contain p-2 bg-white rounded-lg"
                           />
-                          <span className="text-xs font-bold text-zinc-800 mt-3 flex items-center justify-center gap-1.5">
+                          <span className="text-sm font-bold text-zinc-800 mt-3 flex items-center justify-center gap-1.5">
                             <QrCode className="w-4 h-4 text-blue-600" /> Scan with Authenticator App
                           </span>
                         </div>
 
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400 max-w-md leading-relaxed">
+                        <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-md leading-relaxed">
                           Open <strong>Google Authenticator</strong>, <strong>1Password</strong>, or <strong>Authy</strong> on your mobile device, scan the QR code above, and enter the generated 6-digit verification code below.
                         </p>
 
                         {/* Manual Secret Key */}
                         <div className="w-full max-w-md space-y-1.5 text-left bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                          <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 block uppercase tracking-wider">Manual Secret Key</span>
-                          <div className="flex items-center justify-between font-mono text-xs font-bold text-zinc-900 dark:text-zinc-100 tracking-wider">
+                          <span className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 block uppercase tracking-wider">Manual Secret Key</span>
+                          <div className="flex items-center justify-between font-mono text-sm font-bold text-zinc-900 dark:text-zinc-100 tracking-wider">
                             <span className="break-all select-all">{setup2FAData.secret}</span>
                             <button
                               type="button"
@@ -1011,7 +1019,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                                 setCopiedSecret(true);
                                 setTimeout(() => setCopiedSecret(false), 2000);
                               }}
-                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 shrink-0 ml-2"
+                              className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 shrink-0 ml-2"
                             >
                               {copiedSecret ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                               <span>{copiedSecret ? 'Copied!' : 'Copy'}</span>
@@ -1028,12 +1036,15 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                           placeholder="6-digit code (e.g. 123456)"
                           value={totpCode}
                           onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                          className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-100 font-mono text-center tracking-widest w-full sm:w-52 focus:outline-none focus:border-blue-500"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          aria-label="6-digit authenticator code"
+                          className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-2.5 text-base text-zinc-900 dark:text-zinc-100 font-mono text-center tracking-widest w-full sm:w-52 focus:outline-none focus:border-blue-500"
                         />
                         <button
                           type="submit"
                           disabled={isVerifying2FA || totpCode.length < 6}
-                          className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-5 py-2.5 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white text-sm font-bold px-5 py-2.5 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
                         >
                           {isVerifying2FA ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                           <span>Verify & Enable</span>
@@ -1041,7 +1052,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                       </form>
 
                       {totpError && (
-                        <p className="text-xs text-red-600 dark:text-red-400 font-mono text-center">{totpError}</p>
+                        <p className="text-sm text-red-600 dark:text-red-400 font-mono text-center">{totpError}</p>
                       )}
                     </div>
                   )}
@@ -1050,7 +1061,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                   {backupCodes.length > 0 && (
                     <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-xl space-y-3">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-white">Save Backup Recovery Codes</span>
+                        <span className="text-sm font-bold text-white">Save Backup Recovery Codes</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -1063,10 +1074,10 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                           <Copy className="w-3 h-3" /> {copiedCodes ? 'Copied!' : 'Copy All'}
                         </button>
                       </div>
-                      <p className="text-[11px] text-zinc-400">
+                      <p className="text-sm text-zinc-400">
                         Store these single-use recovery codes in a safe password manager. If you lose access to your phone, these are the only way to recover access.
                       </p>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] text-zinc-300 bg-black/50 p-3 rounded-lg border border-zinc-800">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-sm text-zinc-300 bg-black/50 p-3 rounded-lg border border-zinc-800">
                         {backupCodes.map((code, idx) => (
                           <div key={idx} className="p-1 bg-zinc-900 rounded text-center">{code}</div>
                         ))}
@@ -1075,13 +1086,16 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                   )}
 
                   {twoFactorEnabled && (
-                    <div className="pt-2">
+                    <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/50 rounded-xl space-y-3">
+                      <p className="text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed">
+                        Two-factor authentication is on. The next time you sign in, InterviewOps will ask for a 6-digit code from your authenticator app.
+                      </p>
                       <button
                         type="button"
                         onClick={handleDisable2FA}
-                        className="text-xs text-red-600 dark:text-red-400 hover:underline cursor-pointer"
+                        className="bg-red-600 hover:bg-red-700 text-white text-sm font-bold px-4 py-2 rounded-lg cursor-pointer"
                       >
-                        Disable Two-Factor Authentication
+                        Revoke 2FA
                       </button>
                     </div>
                   )}
@@ -1744,9 +1758,10 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
             {activeTab !== 'danger' && (
               <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800/80 flex justify-end">
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={() => void saveSettings()}
                   disabled={isSaving}
-                  className="bg-zinc-900 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-black text-xs font-bold px-6 py-2.5 rounded-lg transition-colors cursor-pointer flex items-center gap-2 disabled:opacity-60 shadow-sm"
+                  className="bg-zinc-900 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-black text-sm font-bold px-6 py-2.5 rounded-lg transition-colors cursor-pointer flex items-center gap-2 disabled:opacity-60 shadow-sm"
                 >
                   {isSaving ? (
                     <>
@@ -1760,7 +1775,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
               </div>
             )}
 
-          </form>
+          </div>
 
         </div>
 

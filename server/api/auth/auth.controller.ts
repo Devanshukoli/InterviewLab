@@ -519,8 +519,8 @@ export class AuthController {
   static verify2FA = catchAsync(async (req: Request<any, any, Verify2FADto>, res: Response): Promise<void> => {
     const user = req.user!;
     const { code } = req.body;
-    const { user: updatedUser, backupCodes } = await AuthService.verifyAndEnable2FA(user.id, code);
-    res.json({ success: true, data: { user: updatedUser, backupCodes }, message: '2FA enabled successfully' });
+    const { backupCodes } = await AuthService.verifyAndEnable2FA(user.id, code);
+    res.json({ success: true, data: { twoFactorEnabled: true, backupCodes }, message: '2FA enabled successfully' });
   });
 
   static verifyLogin2FA = catchAsync(async (req: Request<any, any, VerifyLogin2FADto>, res: Response): Promise<void> => {
