@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Mail, Lock, User as UserIcon, ArrowRight, ShieldCheck, KeyRound, Loader2, ArrowLeft } from 'lucide-react';
+import { X, Mail, Lock, User as UserIcon, ArrowRight, KeyRound, Loader2, ArrowLeft } from 'lucide-react';
 import { UserProfile } from '../types';
+import AppLogo from './AppLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -610,8 +611,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           /* Standard Sign In / Sign Up Mode View */
           <>
             <div className="text-center space-y-2">
-              <div className="inline-flex w-10 h-10 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg items-center justify-center text-zinc-900 dark:text-white mb-1">
-                <ShieldCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <div className="inline-flex mb-1">
+                <AppLogo size={40} />
               </div>
               <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
                 {mode === 'signin' ? 'Sign in to InterviewOps' : 'Create your account'}

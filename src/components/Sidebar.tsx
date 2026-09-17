@@ -10,11 +10,11 @@ import {
   CreditCard, 
   LogOut, 
   ChevronUp,
-  PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftClose
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
+import AppLogo from './AppLogo';
 
 export type NavTab = 
   | 'dashboard' 
@@ -99,25 +99,25 @@ export default function Sidebar({
         {/* App Logo & Toggle Button Header */}
         {isCollapsed ? (
           <div className="h-14 w-full flex items-center justify-center border-b border-zinc-200 dark:border-zinc-800/80 shrink-0">
-            {onToggleCollapse && (
+            {onToggleCollapse ? (
               <button
                 onClick={onToggleCollapse}
-                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition-all cursor-pointer relative group active:scale-95"
+                className="rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition-all cursor-pointer relative group active:scale-95 p-0.5"
                 title="Open sidebar (⌘\)"
               >
-                <PanelLeftOpen className="w-5 h-5" />
+                <AppLogo size={28} />
                 <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-medium px-2.5 py-1.5 rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 border border-zinc-800 dark:border-zinc-200">
                   Open sidebar (⌘\)
                 </span>
               </button>
+            ) : (
+              <AppLogo size={28} />
             )}
           </div>
         ) : (
           <div className="h-14 px-4 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800/80 shrink-0 w-full">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-7 h-7 bg-zinc-900 dark:bg-white rounded-lg flex items-center justify-center shadow-xs shrink-0">
-                <div className="w-3.5 h-3.5 bg-white dark:bg-black rotate-45"></div>
-              </div>
+              <AppLogo size={28} />
               <div className="min-w-0">
                 <span className="font-bold tracking-tight text-sm block text-zinc-900 dark:text-white font-sans truncate">InterviewOps</span>
                 <span className="text-[10px] text-zinc-500 font-mono tracking-wider block truncate">AI INTERVIEW PREP</span>

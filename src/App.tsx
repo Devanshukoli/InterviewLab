@@ -11,6 +11,7 @@ import ResumeLibraryView from './components/ResumeLibraryView';
 import LearningProgressView from './components/LearningProgressView';
 import SettingsView from './components/SettingsView';
 import OnboardingApiKeyModal from './components/OnboardingApiKeyModal';
+import AppLogo from './components/AppLogo';
 
 import { 
   UserProfile, 
@@ -493,6 +494,7 @@ export default function App() {
         {/* Header Bar */}
         <header className="h-14 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between px-6 bg-white dark:bg-[#09090b] shrink-0 transition-colors duration-200">
           <div className="flex items-center gap-3">
+            <AppLogo size={20} />
             <div className="text-xs text-zinc-500 font-mono">
               InterviewOps / <span className="text-zinc-900 dark:text-zinc-200 font-semibold">{activeTab.toUpperCase()}</span>
             </div>

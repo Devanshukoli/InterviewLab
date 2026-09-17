@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import AppLogo from './AppLogo';
 import { 
   Sparkles, 
   FileText, 
@@ -47,9 +48,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
       {/* Header / Navbar */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-[#09090b]/80 border-b border-zinc-800/80 px-6 lg:px-12 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-white rounded flex items-center justify-center">
-            <div className="w-3.5 h-3.5 bg-black rotate-45"></div>
-          </div>
+          <AppLogo size={28} className="ring-1 ring-white/15" />
           <span className="font-bold text-base tracking-tight text-white font-sans">InterviewOps</span>
         </div>
 
@@ -288,9 +287,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
       {/* Footer */}
       <footer className="border-t border-zinc-800/80 py-12 px-6 lg:px-12 max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4">
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 bg-zinc-100 rounded flex items-center justify-center">
-            <div className="w-2.5 h-2.5 bg-black rotate-45"></div>
-          </div>
+          <AppLogo size={20} className="ring-1 ring-white/15" />
           <span className="font-semibold text-zinc-300">InterviewOps</span>
           {/* TODO: make year below dynamic */}
           <span>© 2026. All rights reserved.</span>
