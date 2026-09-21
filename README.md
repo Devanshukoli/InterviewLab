@@ -1,5 +1,5 @@
 # InterviewLabs 🔬
-> **AI-Powered Technical Interview Simulator & Observability Platform**
+> **AI-Powered Technical Interview Platform & Observability Platform**
 
 InterviewLabs is an enterprise-grade technical interview preparation platform built specifically for Systems Engineers, Site Reliability Engineers (SREs), and Software Architects. By evaluating a candidate's resume against specific Job Descriptions (JDs), InterviewLabs deploys a multi-agent AI pipeline to generate targeted technical scenarios, evaluate answers against architectural best practices, and trace every pipeline step with full OpenTelemetry instrumentation.
 
