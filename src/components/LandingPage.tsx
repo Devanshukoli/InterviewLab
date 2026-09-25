@@ -25,7 +25,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
 
   const faqs = [
     {
-      q: "How does InterviewOps generate questions from my resume?",
+      q: "How does InterviewLab generate questions from my resume?",
       a: "Our AI engine parses your resume, identifies core technical competencies, frameworks, and career history, then crafts realistic interview questions tailored to your actual experience."
     },
     {
@@ -49,7 +49,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
       <header className="sticky top-0 z-50 backdrop-blur-md bg-[#09090b]/80 border-b border-zinc-800/80 px-6 lg:px-12 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <AppLogo size={28} className="ring-1 ring-white/15" />
-          <span className="font-bold text-base tracking-tight text-white font-sans">InterviewOps</span>
+          <span className="font-bold text-base tracking-tight text-white font-sans">InterviewLab</span>
         </div>
 
         <nav className="hidden md:flex items-center gap-8 text-xs font-medium text-zinc-400">
@@ -176,7 +176,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
       {/* How It Works Section */}
       <section id="how-it-works" className="py-20 px-6 lg:px-12 border-t border-zinc-800/80 max-w-6xl mx-auto">
         <div className="text-center space-y-3 mb-16">
-          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">How InterviewOps Works</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">How InterviewLab Works</h2>
           <p className="text-xs sm:text-sm text-zinc-400 max-w-xl mx-auto">
             3 simple steps to transform your interview performance.
           </p>
@@ -217,7 +217,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Flexible Pricing Plans</h2>
           <p className="text-xs sm:text-sm text-zinc-400 max-w-xl mx-auto">
-            InterviewOps is currently free during beta access. Subscription tiers are planned for future release.
+            InterviewLab is currently free during beta access. Subscription tiers are planned for future release.
           </p>
         </div>
 
@@ -288,7 +288,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
       <footer className="border-t border-zinc-800/80 py-12 px-6 lg:px-12 max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4">
         <div className="flex items-center gap-2">
           <AppLogo size={20} className="ring-1 ring-white/15" />
-          <span className="font-semibold text-zinc-300">InterviewOps</span>
+          <span className="font-semibold text-zinc-300">InterviewLab</span>
           {/* TODO: make year below dynamic */}
           <span>© 2026. All rights reserved.</span>
         </div>

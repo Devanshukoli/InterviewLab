@@ -1,5 +1,5 @@
 -- ====================================================================
--- InterviewOps - Seed Data
+-- InterviewLab - Seed Data
 -- Run this script in Supabase SQL Editor to seed initial demo data
 -- ====================================================================
 
@@ -7,7 +7,7 @@
 INSERT INTO public.profiles (id, email, password_hash, name, role)
 VALUES (
     'a1b2c3d4-0000-0000-0000-000000000001',
-    'architect@interviewops.io',
+    'architect@InterviewLab.io',
     '$2b$10$abcdefghijklmnopqrstuv',
     'Principal SRE Architect',
     'admin'
@@ -33,8 +33,8 @@ VALUES (
 
 INSERT INTO public.billing_history (user_id, amount, currency, status, description, receipt_number)
 VALUES
-('a1b2c3d4-0000-0000-0000-000000000001', 29.00, 'usd', 'paid', 'InterviewOps Pro Monthly Subscription', 'INV-2026-001'),
-('a1b2c3d4-0000-0000-0000-000000000001', 29.00, 'usd', 'paid', 'InterviewOps Pro Monthly Subscription', 'INV-2026-002')
+('a1b2c3d4-0000-0000-0000-000000000001', 29.00, 'usd', 'paid', 'InterviewLab Pro Monthly Subscription', 'INV-2026-001'),
+('a1b2c3d4-0000-0000-0000-000000000001', 29.00, 'usd', 'paid', 'InterviewLab Pro Monthly Subscription', 'INV-2026-002')
 ON CONFLICT DO NOTHING;
 
 -- 4. Seed User Logins History

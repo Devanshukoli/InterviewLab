@@ -1,5 +1,5 @@
 -- ====================================================================
--- InterviewOps - Row Level Security (RLS) & Auth Triggers
+-- InterviewLab - Row Level Security (RLS) & Auth Triggers
 -- Run this script in Supabase SQL Editor after 01_schema.sql
 -- ====================================================================
 

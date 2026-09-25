@@ -7,7 +7,7 @@ describe('2FA profile mapping', () => {
   it('reads pending_two_factor_secret so verify can finish after setup', () => {
     const user = AuthService.profileRowToUser({
       id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
-      email: 'architect@interviewops.io',
+      email: 'architect@InterviewLab.io',
       name: 'Architect',
       two_factor_enabled: false,
       two_factor_secret: null,

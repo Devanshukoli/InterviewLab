@@ -1,5 +1,5 @@
 -- ====================================================================
--- InterviewOps - Supabase Database Schema
+-- InterviewLab - Supabase Database Schema
 -- Run this script in the Supabase SQL Editor to initialize all tables
 -- ====================================================================
 

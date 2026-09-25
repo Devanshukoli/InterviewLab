@@ -496,7 +496,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <AppLogo size={20} />
             <div className="text-xs text-zinc-500 font-mono">
-              InterviewOps / <span className="text-zinc-900 dark:text-zinc-200 font-semibold">{activeTab.toUpperCase()}</span>
+              InterviewLab / <span className="text-zinc-900 dark:text-zinc-200 font-semibold">{activeTab.toUpperCase()}</span>
             </div>
           </div>
 
@@ -637,7 +637,7 @@ export default function App() {
           <div className="w-full max-w-md bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 space-y-4 text-center shadow-xl">
             <h2 className="text-base font-bold text-zinc-900 dark:text-white">Pro Billing (Coming Soon)</h2>
             <p className="text-xs text-zinc-600 dark:text-zinc-400">
-              InterviewOps is currently free during beta access. Pro subscriptions will offer priority multi-agent LLM routing and collaborative team practice rooms.
+              InterviewLab is currently free during beta access. Pro subscriptions will offer priority multi-agent LLM routing and collaborative team practice rooms.
             </p>
             <button
               onClick={() => setBillingNoticeOpen(false)}

@@ -1,5 +1,5 @@
 -- ====================================================================
--- InterviewOps - Migration Script: Resume Library File Uploads & Edits
+-- InterviewLab - Migration Script: Resume Library File Uploads & Edits
 -- Run this script directly in your Supabase SQL Editor
 -- ====================================================================
 

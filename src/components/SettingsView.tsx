@@ -423,7 +423,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `interviewops_data_export_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `InterviewLab_data_export_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1088,7 +1088,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                   {twoFactorEnabled && (
                     <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/50 rounded-xl space-y-3">
                       <p className="text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed">
-                        Two-factor authentication is on. The next time you sign in, InterviewOps will ask for a 6-digit code from your authenticator app.
+                        Two-factor authentication is on. The next time you sign in, InterviewLab will ask for a 6-digit code from your authenticator app.
                       </p>
                       <button
                         type="button"
@@ -1358,7 +1358,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
               <div className="space-y-6">
                 <div className="border-b border-zinc-200 dark:border-zinc-800/80 pb-2">
                   <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Notification Preferences</h2>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Manage how and when InterviewOps communicates updates and practice reminders to you.</p>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Manage how and when InterviewLab communicates updates and practice reminders to you.</p>
                 </div>
 
                 <div className="space-y-4">
@@ -1663,7 +1663,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                 {!showDeleteConfirm ? (
                   <div className="space-y-4">
                     <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                      Permanently delete your InterviewOps account, saved resume library, and interview session history. This action cannot be undone and will cascade delete all your private resources.
+                      Permanently delete your InterviewLab account, saved resume library, and interview session history. This action cannot be undone and will cascade delete all your private resources.
                     </p>
                     <button
                       type="button"

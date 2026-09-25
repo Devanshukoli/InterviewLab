@@ -51,7 +51,7 @@ export function generateJwtToken(user: User | { id: string; email: string; name:
 
   return jwt.sign(payload, config.jwtSecret, {
     expiresIn: '15m', // Short-lived access token valid for 15 minutes
-    issuer: 'InterviewOps-Auth'
+    issuer: 'InterviewLab-Auth'
   });
 }
 
@@ -110,7 +110,7 @@ export function generateRefreshToken(user: { id: string; email: string }, tokenI
 
   return jwt.sign(payload, config.jwtSecret, {
     expiresIn: '7d', // Refresh token valid for 7 days
-    issuer: 'InterviewOps-Auth'
+    issuer: 'InterviewLab-Auth'
   });
 }
 
@@ -220,14 +220,14 @@ export async function isSessionRevoked(userId: string, sessionId?: string): Prom
  * Verifies a JWT access token signature and payload
  */
 export function verifyJwtToken(token: string): JwtPayload {
-  return jwt.verify(token, config.jwtSecret, { issuer: 'InterviewOps-Auth' }) as JwtPayload;
+  return jwt.verify(token, config.jwtSecret, { issuer: 'InterviewLab-Auth' }) as JwtPayload;
 }
 
 /**
  * Verifies a JWT refresh token signature and payload
  */
 export function verifyRefreshToken(token: string): RefreshJwtPayload {
-  const decoded = jwt.verify(token, config.jwtSecret, { issuer: 'InterviewOps-Auth' }) as RefreshJwtPayload;
+  const decoded = jwt.verify(token, config.jwtSecret, { issuer: 'InterviewLab-Auth' }) as RefreshJwtPayload;
   if (decoded.type !== 'refresh') {
     throw new Error('Invalid token type');
   }

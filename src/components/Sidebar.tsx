@@ -119,7 +119,7 @@ export default function Sidebar({
             <div className="flex items-center gap-3 min-w-0">
               <AppLogo size={28} />
               <div className="min-w-0">
-                <span className="font-bold tracking-tight text-sm block text-zinc-900 dark:text-white font-sans truncate">InterviewOps</span>
+                <span className="font-bold tracking-tight text-sm block text-zinc-900 dark:text-white font-sans truncate">InterviewLab</span>
                 <span className="text-[10px] text-zinc-500 font-mono tracking-wider block truncate">AI INTERVIEW PREP</span>
               </div>
             </div>

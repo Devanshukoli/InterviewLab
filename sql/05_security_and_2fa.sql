@@ -1,5 +1,5 @@
 -- ====================================================================
--- InterviewOps - Migration Script: Security, 2FA, and Session Management
+-- InterviewLab - Migration Script: Security, 2FA, and Session Management
 -- Run this script directly in your Supabase SQL Editor
 -- ====================================================================
 

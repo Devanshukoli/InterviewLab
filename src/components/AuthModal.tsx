@@ -12,7 +12,7 @@ interface AuthModalProps {
 export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [viewMode, setViewMode] = useState<'auth' | 'forgot_password' | 'reset_password'>('auth');
-  const [email, setEmail] = useState('architect@interviewops.io');
+  const [email, setEmail] = useState('architect@InterviewLab.io');
   const [password, setPassword] = useState('••••••••••••');
   const [name, setName] = useState('John Doe');
   const [resetToken, setResetToken] = useState('');
@@ -482,7 +482,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                     autoFocus
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="architect@interviewops.io"
+                    placeholder="architect@InterviewLab.io"
                     className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -616,7 +616,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 <AppLogo size={40} />
               </div>
               <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
-                {mode === 'signin' ? 'Sign in to InterviewOps' : 'Create your account'}
+                {mode === 'signin' ? 'Sign in to InterviewLab' : 'Create your account'}
               </h2>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 {mode === 'signin' 
@@ -695,7 +695,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="architect@interviewops.io"
+                    placeholder="architect@InterviewLab.io"
                     className="w-full bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-zinc-900 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>

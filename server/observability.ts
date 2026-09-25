@@ -17,8 +17,8 @@ import { PromptService } from './services/prompt.service';
 export const pinoLogger = pino({
   level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
   base: {
-    'service.name': process.env.OTEL_SERVICE_NAME || 'interviewops-api',
-    service: process.env.OTEL_SERVICE_NAME || 'interviewops-api'
+    'service.name': process.env.OTEL_SERVICE_NAME || 'InterviewLab-api',
+    service: process.env.OTEL_SERVICE_NAME || 'InterviewLab-api'
   },
   timestamp: pino.stdTimeFunctions.isoTime,
   mixin() {
@@ -33,7 +33,7 @@ export const pinoLogger = pino({
     const userId = currentStore?.userId || (activeOtelSpan as any)?.attributes?.['user.id'] || process.env.DEFAULT_USER_ID || 'usr-anonymous';
     const llmProvider = currentStore?.llmProvider || (activeOtelSpan as any)?.attributes?.['llm.provider'] || process.env.LLM_PROVIDER || 'gemini';
     const llmModel = currentStore?.llmModel || (activeOtelSpan as any)?.attributes?.['llm.model'] || process.env.LLM_MODEL || 'gemini-3.6-flash';
-    const serviceName = process.env.OTEL_SERVICE_NAME || 'interviewops-api';
+    const serviceName = process.env.OTEL_SERVICE_NAME || 'InterviewLab-api';
 
     const attrs: Record<string, any> = {
       'service.name': serviceName,
@@ -63,7 +63,7 @@ export const pinoLogger = pino({
   }
 });
 
-const meter = metrics.getMeter(process.env.OTEL_SERVICE_NAME || 'interviewops-api');
+const meter = metrics.getMeter(process.env.OTEL_SERVICE_NAME || 'InterviewLab-api');
 
 // OpenTelemetry Metrics Instruments (9 required metrics)
 export const interviewsTotalCounter = meter.createCounter('interviews_total', {
@@ -307,7 +307,7 @@ export function logStructured(
   const userId = String(meta['user.id'] || meta.userId || currentStore?.userId || (activeOtelSpan as any)?.attributes?.['user.id'] || process.env.DEFAULT_USER_ID || 'usr-anonymous');
   const llmProvider = String(meta['llm.provider'] || meta.llmProvider || currentStore?.llmProvider || (activeOtelSpan as any)?.attributes?.['llm.provider'] || process.env.LLM_PROVIDER || 'gemini');
   const llmModel = String(meta['llm.model'] || meta.llmModel || currentStore?.llmModel || (activeOtelSpan as any)?.attributes?.['llm.model'] || process.env.LLM_MODEL || 'gemini-3.6-flash');
-  const serviceName = process.env.OTEL_SERVICE_NAME || 'interviewops-api';
+  const serviceName = process.env.OTEL_SERVICE_NAME || 'InterviewLab-api';
   const startTime = currentStore?.startTime || Date.now();
   const requestDuration = typeof meta.requestDuration === 'number' ? meta.requestDuration : (Date.now() - startTime);
 
@@ -450,13 +450,13 @@ export function addLocalTrace(span: Omit<TelemetrySpan, 'id' | 'timestamp'>) {
   return newSpan;
 }
 
-const otelTracer = trace.getTracer(process.env.OTEL_SERVICE_NAME || 'interviewops-api');
+const otelTracer = trace.getTracer(process.env.OTEL_SERVICE_NAME || 'InterviewLab-api');
 
 // OpenTelemetry Initialization reporter
 export const initOpenTelemetry = () => {
   setupConsoleInterceptor();
   const endpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
-  logger.info(`📡 [OpenTelemetry] Single Tracer Provider initialized for service: ${process.env.OTEL_SERVICE_NAME || 'interviewops-api'}`);
+  logger.info(`📡 [OpenTelemetry] Single Tracer Provider initialized for service: ${process.env.OTEL_SERVICE_NAME || 'InterviewLab-api'}`);
   logger.info(`📡 [OpenTelemetry] OTLP Trace Exporter active targeting: ${endpoint}`);
 };
 
@@ -588,7 +588,7 @@ export const tracer = {
           traceId: tid,
           spanId: sid,
           name,
-          service: process.env.OTEL_SERVICE_NAME || 'interviewops-api',
+          service: process.env.OTEL_SERVICE_NAME || 'InterviewLab-api',
           durationMs: duration,
           status,
           attributes: currentAttributes
@@ -614,7 +614,7 @@ export const tracer = {
           traceId: tid,
           spanId: sid,
           name,
-          service: process.env.OTEL_SERVICE_NAME || 'interviewops-api',
+          service: process.env.OTEL_SERVICE_NAME || 'InterviewLab-api',
           durationMs: duration,
           status: 'ERROR',
           attributes: { ...currentAttributes, 'error.message': cleanErr.message, 'error.stack': cleanErr.stack || '' }
@@ -714,7 +714,7 @@ export function requestTracing(req: Request, res: Response, next: NextFunction) 
     activeSpan.setAttribute('api.name', apiName);
     activeSpan.setAttribute('http.route', req.originalUrl || req.url);
     activeSpan.setAttribute('rpc.method', apiName);
-    activeSpan.setAttribute('service.name', process.env.OTEL_SERVICE_NAME || 'interviewops-api');
+    activeSpan.setAttribute('service.name', process.env.OTEL_SERVICE_NAME || 'InterviewLab-api');
   }
 
   const logCtx: LogContext = {
@@ -743,7 +743,7 @@ export function requestTracing(req: Request, res: Response, next: NextFunction) 
         traceId,
         spanId,
         name: finalApiName,
-        service: process.env.OTEL_SERVICE_NAME || 'interviewops-api',
+        service: process.env.OTEL_SERVICE_NAME || 'InterviewLab-api',
         durationMs: duration,
         status,
         attributes: {

@@ -70,7 +70,7 @@ export default function DashboardView({
             Elevate your interview performance with AI AI Coaching
           </h1>
           <p className="text-xs sm:text-sm text-zinc-300 dark:text-zinc-400 leading-relaxed">
-            InterviewOps analyzes your resume against target roles, generates realistic technical & behavioral scenarios, and delivers detailed domain evaluations.
+            InterviewLab analyzes your resume against target roles, generates realistic technical & behavioral scenarios, and delivers detailed domain evaluations.
           </p>
           <div className="pt-2 flex flex-wrap items-center gap-3">
             <button 

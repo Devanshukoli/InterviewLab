@@ -59,7 +59,7 @@ const metricReader = new PeriodicExportingMetricReader({
 });
 
 const resource = resourceFromAttributes({
-  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "interviewops-api",
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "InterviewLab-api",
   [ATTR_SERVICE_VERSION]: "1.0.0",
   [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || "development",
 });

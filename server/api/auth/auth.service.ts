@@ -504,7 +504,7 @@ export class AuthService {
       }
     }
 
-    const uri = TotpService.getOtpAuthUri(secret, userObj.email, 'InterviewOps');
+    const uri = TotpService.getOtpAuthUri(secret, userObj.email, 'InterviewLab');
     return { secret, uri };
   }
 
@@ -993,5 +993,3 @@ export class AuthService {
     return { message: 'Password reset successfully. Please log in with your new password.' };
   }
 }
-
-

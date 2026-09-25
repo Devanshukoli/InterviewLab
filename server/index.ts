@@ -40,7 +40,7 @@ async function startServer() {
 
   // Start the cohesive server
   const server = app.listen(config.port, '0.0.0.0', () => {
-    logger.info(`🚀 [InterviewOps Backend] Listening on http://0.0.0.0:${config.port}`);
+    logger.info(`🚀 [InterviewLab Backend] Listening on http://0.0.0.0:${config.port}`);
     logger.info(`🔬 [Observability] Endpoint http://0.0.0.0:${config.port}/api/telemetry is live.`);
   });
 

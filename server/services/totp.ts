@@ -75,7 +75,7 @@ export class TotpService {
   /**
    * Generate otpauth URI for QR codes
    */
-  static getOtpAuthUri(secret: string, accountName: string, issuer = 'InterviewOps'): string {
+  static getOtpAuthUri(secret: string, accountName: string, issuer = 'InterviewLab'): string {
     const label = encodeURIComponent(`${issuer}:${accountName}`);
     const encodedIssuer = encodeURIComponent(issuer);
     return `otpauth://totp/${label}?secret=${secret}&issuer=${encodedIssuer}&algorithm=SHA1&digits=6&period=30`;

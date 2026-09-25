@@ -1,6 +1,6 @@
-# InterviewOps - Supabase Database Setup & SQL Migration Scripts
+# InterviewLab - Supabase Database Setup & SQL Migration Scripts
 
-This directory contains standalone SQL scripts designed for **Supabase SQL Editor** to set up a complete relational PostgreSQL database schema for **InterviewOps**.
+This directory contains standalone SQL scripts designed for **Supabase SQL Editor** to set up a complete relational PostgreSQL database schema for **InterviewLab**.
 
 ---
 
@@ -42,7 +42,7 @@ Creates custom PostgreSQL ENUM types, tables, primary/foreign keys, CASCADE cons
 Enables Row Level Security (RLS) policies for user data isolation and attaches an automatic trigger on `auth.users` to provision user profiles and free subscriptions upon signup.
 
 ### Step 3 (Optional): Execute `03_seed_data.sql`
-Populates initial demo user (`architect@interviewops.io`), active prompt versions, sample resume/JD, learning progress status, and billing invoice history.
+Populates initial demo user (`architect@InterviewLab.io`), active prompt versions, sample resume/JD, learning progress status, and billing invoice history.
 
 ---
 
