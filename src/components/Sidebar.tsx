@@ -15,20 +15,20 @@ import {
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
 import AppLogo from './AppLogo';
+import { MENU_ITEMS, menuForRoute, type AppRoute, type MenuId } from '../lib/app-route';
 
-export type NavTab = 
-  | 'dashboard' 
-  | 'new-session' 
-  | 'active-session' 
-  | 'evaluation' 
-  | 'history' 
-  | 'resumes' 
-  | 'progress' 
-  | 'settings';
+const MENU_ICONS: Record<MenuId, typeof LayoutDashboard> = {
+  dashboard: LayoutDashboard,
+  'new-interview': Play,
+  'interview-history': History,
+  resumes: FileText,
+  'learning-progress': TrendingUp,
+  settings: Settings,
+};
 
 interface SidebarProps {
-  activeTab: NavTab;
-  setActiveTab: (tab: NavTab) => void;
+  route: AppRoute;
+  onNavigate: (route: AppRoute) => void;
   user: UserProfile | null;
   onLogout: () => void;
   onOpenProfile: () => void;
@@ -38,8 +38,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  activeTab,
-  setActiveTab,
+  route,
+  onNavigate,
   user,
   onLogout,
   onOpenProfile,
@@ -70,14 +70,8 @@ export default function Sidebar({
     };
   }, []);
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'new-session', label: 'New Interview', icon: Play },
-    { id: 'history', label: 'Interview History', icon: History },
-    { id: 'resumes', label: 'Resume Library', icon: FileText },
-    { id: 'progress', label: 'Learning Progress', icon: TrendingUp },
-    { id: 'settings', label: 'Settings', icon: Settings }
-  ] as const;
+  const activeMenu = menuForRoute(route);
+  const openMenu = (menu: MenuId) => onNavigate({ kind: 'menu', menu });
 
   return (
     <motion.aside 
@@ -142,13 +136,13 @@ export default function Sidebar({
         {/* Main Navigation */}
         {isCollapsed ? (
           <nav className="flex-1 py-4 flex flex-col items-center gap-2 overflow-y-auto px-2 w-full">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
+            {MENU_ITEMS.map((item) => {
+              const Icon = MENU_ICONS[item.id];
+              const isActive = activeMenu === item.id;
               return (
                 <div key={item.id} className="relative group">
                   <button
-                    onClick={() => setActiveTab(item.id as NavTab)}
+                    onClick={() => openMenu(item.id)}
                     className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer active:scale-95 ${
                       isActive
                         ? 'bg-zinc-900 dark:bg-zinc-800 text-white shadow-sm'
@@ -171,13 +165,13 @@ export default function Sidebar({
               Menu
             </div>
 
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
+            {MENU_ITEMS.map((item) => {
+              const Icon = MENU_ICONS[item.id];
+              const isActive = activeMenu === item.id;
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id as NavTab)}
+                  onClick={() => openMenu(item.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     isActive
                       ? 'bg-zinc-900 dark:bg-zinc-800 text-white font-semibold shadow-sm'
@@ -227,7 +221,7 @@ export default function Sidebar({
               <button
                 onClick={() => {
                   setMenuOpen(false);
-                  setActiveTab('settings');
+                  openMenu('settings');
                 }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition-colors cursor-pointer text-left"
               >

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import AuthModal from './components/AuthModal';
-import Sidebar, { NavTab } from './components/Sidebar';
+import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import NewInterviewFlow from './components/NewInterviewFlow';
 import ActiveInterviewSession from './components/ActiveInterviewSession';
@@ -28,13 +28,16 @@ import {
   clearAuthTokens,
   logoutUser
 } from './lib/auth';
+import { pathForAppRoute, sessionIdFromRoute, useAppRoute, routeLabel } from './lib/app-route';
 
 export default function App() {
   // Authentication State
   const [user, setUser] = useState<UserProfile | null>(null);
   
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+  const { route, navigate } = useAppRoute();
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [unresolvedSessionId, setUnresolvedSessionId] = useState<string | null>(null);
 
   // Application Data States
   const [sessions, setSessions] = useState<InterviewSession[]>([]);
@@ -202,6 +205,8 @@ export default function App() {
       }
     } catch (e) {
       setSessions([]);
+    } finally {
+      setHistoryLoaded(true);
     }
   };
 
@@ -266,7 +271,7 @@ export default function App() {
       const qJson = await qRes.json();
       if (qJson.success) {
         setCurrentSession(qJson.data);
-        setActiveTab('active-session');
+        navigate({ kind: 'live-session', sessionId: qJson.data.id, phase: 'active' });
         fetchHistory();
       } else {
         const errMsg = qJson.message || 'Failed to generate interview session';
@@ -447,7 +452,56 @@ export default function App() {
   const handleLogout = async () => {
     await logoutUser();
     setUser(null);
+    window.history.replaceState(null, '', '/');
   };
+
+  const openLiveSession = (session: InterviewSession) => {
+    setCurrentSession(session);
+    navigate({
+      kind: 'live-session',
+      sessionId: session.id,
+      phase: session.status === 'completed' ? 'evaluation' : 'active',
+    });
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    const path = window.location.pathname;
+    const canonical = pathForAppRoute(route);
+    if (path !== canonical) {
+      navigate(route, 'replace');
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const sessionId = sessionIdFromRoute(route);
+    if (!sessionId || !user) return;
+    const found = sessions.find((session) => session.id === sessionId);
+    if (found) {
+      setUnresolvedSessionId(null);
+      setCurrentSession((prev) => (prev?.id === found.id ? prev : found));
+      return;
+    }
+    if (!historyLoaded) return;
+    let cancelled = false;
+    fetchWithAuth(`/api/interview/session/${encodeURIComponent(sessionId)}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.success && json.data) {
+          setUnresolvedSessionId(null);
+          setCurrentSession(json.data);
+        } else {
+          setUnresolvedSessionId(sessionId);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setUnresolvedSessionId(sessionId);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [route, sessions, historyLoaded, user]);
 
   // Unauthenticated View -> Render Landing Page
   if (!user) {
@@ -462,7 +516,10 @@ export default function App() {
           onClose={() => setIsAuthModalOpen(false)}
           onSuccess={(loggedUser) => {
             setUser(loggedUser);
-            setActiveTab('dashboard');
+            const path = window.location.pathname.replace(/\/+$/, '') || '/';
+            if (path === '/') {
+              navigate({ kind: 'menu', menu: 'dashboard' }, 'replace');
+            }
             fetchResumes();
             fetchHistory();
             fetchProgress();
@@ -478,8 +535,8 @@ export default function App() {
       
       {/* Sidebar Navigation */}
       <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        route={route}
+        onNavigate={navigate}
         user={user}
         onLogout={handleLogout}
         onOpenProfile={() => setIsProfileModalOpen(true)}
@@ -496,13 +553,13 @@ export default function App() {
           <div className="flex items-center gap-3">
             <AppLogo size={20} />
             <div className="text-xs text-zinc-500 font-mono">
-              InterviewLab / <span className="text-zinc-900 dark:text-zinc-200 font-semibold">{activeTab.toUpperCase()}</span>
+              InterviewLab / <span className="text-zinc-900 dark:text-zinc-200 font-semibold">{routeLabel(route)}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setActiveTab('new-session')}
+              onClick={() => navigate({ kind: 'menu', menu: 'new-interview' })}
               className="bg-zinc-900 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-black text-xs font-bold px-4 py-1.5 rounded-lg transition-all cursor-pointer shadow-sm active:scale-95"
             >
               + New Interview
@@ -513,29 +570,23 @@ export default function App() {
         {/* Viewport Content */}
         <main className="flex-1 overflow-y-auto p-6 sm:p-8">
           
-          {activeTab === 'dashboard' && (
+          {route.kind === 'menu' && route.menu === 'dashboard' && (
             <DashboardView
               user={user}
               sessions={sessions}
               resumes={resumes}
               progress={progress}
               currentSession={currentSession}
-              onStartNewInterview={() => setActiveTab('new-session')}
-              onContinueSession={(session) => {
-                setCurrentSession(session);
-                setActiveTab('active-session');
-              }}
-              onViewResumes={() => setActiveTab('resumes')}
-              onViewProgress={() => setActiveTab('progress')}
-              onViewHistory={() => setActiveTab('history')}
-              onSelectSession={(session) => {
-                setCurrentSession(session);
-                setActiveTab(session.status === 'completed' ? 'evaluation' : 'active-session');
-              }}
+              onStartNewInterview={() => navigate({ kind: 'menu', menu: 'new-interview' })}
+              onContinueSession={openLiveSession}
+              onViewResumes={() => navigate({ kind: 'menu', menu: 'resumes' })}
+              onViewProgress={() => navigate({ kind: 'menu', menu: 'learning-progress' })}
+              onViewHistory={() => navigate({ kind: 'menu', menu: 'interview-history' })}
+              onSelectSession={openLiveSession}
             />
           )}
 
-          {activeTab === 'new-session' && (
+          {route.kind === 'menu' && route.menu === 'new-interview' && (
             <NewInterviewFlow
               savedResumes={resumes}
               onStartSession={handleStartSession}
@@ -543,53 +594,67 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'active-session' && currentSession && (
+          {route.kind === 'live-session' && route.phase === 'active' && currentSession?.id === route.sessionId && (
             <ActiveInterviewSession
               session={currentSession}
               onAnswerSubmit={handleAnswerSubmit}
-              onCompleteSession={() => setActiveTab('evaluation')}
+              onCompleteSession={() => navigate({
+                kind: 'live-session',
+                sessionId: currentSession.id,
+                phase: 'evaluation',
+              })}
               isEvaluating={isEvaluatingAnswer}
             />
           )}
 
-          {activeTab === 'evaluation' && currentSession && (
+          {route.kind === 'live-session' && route.phase === 'evaluation' && currentSession?.id === route.sessionId && (
             <EvaluationReportView
               session={currentSession}
-              onBackToDashboard={() => setActiveTab('dashboard')}
+              onBackToDashboard={() => navigate({ kind: 'menu', menu: 'dashboard' })}
             />
           )}
 
-          {activeTab === 'history' && (
+          {route.kind === 'live-session' && currentSession?.id !== route.sessionId && (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              {unresolvedSessionId === route.sessionId
+                ? 'This interview session is not available.'
+                : 'Loading interview session…'}
+            </p>
+          )}
+
+          {(route.kind === 'menu' && route.menu === 'interview-history') || route.kind === 'history-session' ? (
             <InterviewHistoryView
               sessions={sessions}
-              onSelectSession={(session) => {
-                setCurrentSession(session);
-                setActiveTab(session.status === 'completed' ? 'evaluation' : 'active-session');
-              }}
-              onStartNewSession={() => setActiveTab('new-session')}
+              selectedSessionId={route.kind === 'history-session' ? route.sessionId : null}
+              historyLoaded={historyLoaded}
+              fallbackSession={currentSession}
+              onOpenSession={(sessionId) => navigate({ kind: 'history-session', sessionId })}
+              onBack={() => navigate({ kind: 'menu', menu: 'interview-history' })}
+              onSelectSession={openLiveSession}
+              onStartNewSession={() => navigate({ kind: 'menu', menu: 'new-interview' })}
             />
-          )}
+          ) : null}
 
-          {activeTab === 'resumes' && (
+          {route.kind === 'menu' && route.menu === 'resumes' && (
             <ResumeLibraryView
               resumes={resumes}
               onUploadResume={handleUploadResume}
               onUpdateResume={handleUpdateResume}
               onDeleteResume={handleDeleteResume}
-              onSelectResumeForSession={(resumeId) => {
-                setActiveTab('new-session');
+              onSelectResumeForSession={() => {
+                navigate({ kind: 'menu', menu: 'new-interview' });
               }}
             />
           )}
 
-          {activeTab === 'progress' && (
+          {route.kind === 'menu' && route.menu === 'learning-progress' && (
             <LearningProgressView
               progress={progress}
               onRefresh={fetchProgress}
             />
           )}
 
-          {activeTab === 'settings' && (
+          {route.kind === 'menu' && route.menu === 'settings' && (
             <SettingsView
               user={user}
               onUpdateUser={handleUpdateUser}
