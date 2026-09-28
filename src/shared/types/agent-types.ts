@@ -1,6 +1,15 @@
 /**
  * Resume Agent Types
  */
+export interface EmploymentGap {
+  months: number;
+  from: string;
+  to: string;
+  previousLabel: string;
+  nextLabel: string;
+  question: string;
+}
+
 export interface ResumeAnalysisResult {
   candidateName: string;
   experienceYears: number;
@@ -10,6 +19,7 @@ export interface ResumeAnalysisResult {
   education: string[];
   strengths: string[];
   weaknesses: string[];
+  employmentGaps?: EmploymentGap[];
 }
 
 export interface ResumeProfile {

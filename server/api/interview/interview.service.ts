@@ -7,6 +7,7 @@ import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { defaultEvaluationAgent } from '../../modules/agents/evaluation-agent';
 import { ByokService } from '../byok/byok.service';
 import { historyClientQuestionKey, historyQuestionKeyByDbId } from './history-question-keys';
+import { employmentGapsFromResume, preferEmploymentGapQuestions } from '../../modules/agents/employment-gaps';
 
 export function ensureUUID(id?: string): string {
   return stringToUUID(id);
@@ -432,6 +433,13 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
           });
         }
       }
+
+      questions = preferEmploymentGapQuestions(
+        questions,
+        employmentGapsFromResume(resume.text || '', new Date()),
+        interviewType,
+        questionCount
+      );
 
       const options = {
         experienceLevel: experienceLevel as any,

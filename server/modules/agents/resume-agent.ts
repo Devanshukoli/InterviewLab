@@ -3,6 +3,7 @@ import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../../ob
 import { AppError } from '../../middleware/error_handling';
 import { ResumeAnalysisResult, ResumeProfile } from '../../../src/shared/types';
 import { PromptService } from '../../services/prompt.service';
+import { employmentGapsFromResume } from './employment-gaps';
 
 export type { ResumeAnalysisResult, ResumeProfile };
 
@@ -154,8 +155,16 @@ export function validateAndNormalizeResumeAnalysis(obj: any): {
       projects,
       education,
       strengths,
-      weaknesses
+      weaknesses,
+      employmentGaps: []
     }
+  };
+}
+
+export function attachEmploymentGaps(data: ResumeAnalysisResult, resumeText: string, today = new Date()): ResumeAnalysisResult {
+  return {
+    ...data,
+    employmentGaps: employmentGapsFromResume(resumeText, today),
   };
 }
 
@@ -227,7 +236,7 @@ export class ResumeAgent {
             'candidate.experience_years': validation.data.experienceYears,
             'candidate.skills_count': validation.data.skills.length
           });
-          return validation.data;
+          return attachEmploymentGaps(validation.data, resumeText);
         }
         span.addEvent('Validation Failed', { 'llm.attempt': 1, 'errors.count': validation.errors?.length || 0 });
         logger.warn('🔮 [ResumeAgent] Initial schema validation failed. Attempting retry once...', validation.errors);
@@ -308,7 +317,7 @@ ${resumeText.trim()}
         'retry_used': true
       });
 
-      return retryValidation.data;
+      return attachEmploymentGaps(retryValidation.data, resumeText);
     } catch (err: any) {
       span.recordException(err);
       throw err;

@@ -2,6 +2,7 @@ import { getLLMProvider } from '../../services/llm';
 import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../../observability';
 import { AppError } from '../../middleware/error_handling';
 import { PromptService } from '../../services/prompt.service';
+import { preferEmploymentGapQuestions } from './employment-gaps';
 import { 
   ResumeAnalysisResult, 
   ResumeProfile, 
@@ -412,7 +413,14 @@ export class QuestionAgent {
             'questions.interview_type': interviewType,
             'questions.difficulty': difficulty
           });
-          return validation.data;
+          return {
+            questions: preferEmploymentGapQuestions(
+              validation.data.questions,
+              Array.isArray(resumeData?.employmentGaps) ? resumeData.employmentGaps : [],
+              interviewType,
+              questionCount
+            )
+          };
         }
 
         lastValidationErrors = validation.errors || [];
@@ -521,7 +529,14 @@ Parameters:
         'retry_used': true
       });
 
-      return retryValidation.data;
+      return {
+        questions: preferEmploymentGapQuestions(
+          retryValidation.data.questions,
+          Array.isArray(resumeData?.employmentGaps) ? resumeData.employmentGaps : [],
+          interviewType,
+          questionCount
+        )
+      };
     } catch (err: any) {
       span.recordException(err);
       throw err;
