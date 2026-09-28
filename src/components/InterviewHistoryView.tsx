@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   History, 
   ArrowLeft, 
@@ -19,18 +19,28 @@ import { InterviewSession, Evaluation } from '../types';
 
 interface InterviewHistoryViewProps {
   sessions: InterviewSession[];
+  selectedSessionId: string | null;
+  historyLoaded: boolean;
+  fallbackSession?: InterviewSession | null;
+  onOpenSession: (sessionId: string) => void;
+  onBack: () => void;
   onSelectSession: (session: InterviewSession) => void;
   onStartNewSession: () => void;
 }
 
 export default function InterviewHistoryView({
   sessions,
+  selectedSessionId,
+  historyLoaded,
+  fallbackSession,
+  onOpenSession,
+  onBack,
   onSelectSession,
   onStartNewSession
 }: InterviewHistoryViewProps) {
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-
-  const selectedSession = sessions.find(s => s.id === selectedSessionId);
+  const selectedSession =
+    sessions.find(s => s.id === selectedSessionId) ??
+    (fallbackSession?.id === selectedSessionId ? fallbackSession : undefined);
 
   // Calculate overall impression across all concluded sessions + active session
   const completedSessions = sessions.filter(s => s.status === 'completed' || s.coachingReport);
@@ -59,7 +69,22 @@ export default function InterviewHistoryView({
   const overallWeakTopics = Array.from(allWeakTopicsSet);
   const overallStrengths = Array.from(allStrengthsSet);
 
-  // Render Session Details View if a session is selected
+  if (selectedSessionId && !selectedSession) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4 pb-12">
+        <button
+          onClick={onBack}
+          className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          {historyLoaded ? 'This interview session is not in your history.' : 'Loading interview session…'}
+        </p>
+      </div>
+    );
+  }
+
   if (selectedSession) {
     const report = {
       overallScore: selectedSession.coachingReport?.overallScore,
@@ -105,7 +130,7 @@ export default function InterviewHistoryView({
         <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-5">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setSelectedSessionId(null)}
+              onClick={onBack}
               className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg transition-colors cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -375,7 +400,7 @@ export default function InterviewHistoryView({
           sessions.map(s => (
             <div
               key={s.id}
-              onClick={() => setSelectedSessionId(s.id)}
+              onClick={() => onOpenSession(s.id)}
               className="p-5 hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors cursor-pointer flex items-center justify-between gap-4"
             >
               <div className="space-y-1.5 min-w-0">
