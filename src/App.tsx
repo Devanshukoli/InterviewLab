@@ -11,7 +11,6 @@ import ResumeLibraryView from './components/ResumeLibraryView';
 import LearningProgressView from './components/LearningProgressView';
 import SettingsView from './components/SettingsView';
 import OnboardingApiKeyModal from './components/OnboardingApiKeyModal';
-import AppLogo from './components/AppLogo';
 
 import { 
   UserProfile, 
@@ -28,7 +27,7 @@ import {
   clearAuthTokens,
   logoutUser
 } from './lib/auth';
-import { pathForAppRoute, sessionIdFromRoute, useAppRoute, routeLabel } from './lib/app-route';
+import { pathForAppRoute, sessionIdFromRoute, useAppRoute } from './lib/app-route';
 
 export default function App() {
   // Authentication State
@@ -549,14 +548,7 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden bg-zinc-50 dark:bg-[#09090b] transition-colors duration-200">
         
         {/* Header Bar */}
-        <header className="h-14 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between px-6 bg-white dark:bg-[#09090b] shrink-0 transition-colors duration-200">
-          <div className="flex items-center gap-3">
-            <AppLogo size={20} />
-            <div className="text-xs text-zinc-500 font-mono">
-              InterviewLab / <span className="text-zinc-900 dark:text-zinc-200 font-semibold">{routeLabel(route)}</span>
-            </div>
-          </div>
-
+        <header className="h-14 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-end px-6 bg-white dark:bg-[#09090b] shrink-0 transition-colors duration-200">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate({ kind: 'menu', menu: 'new-interview' })}

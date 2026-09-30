@@ -79,15 +79,6 @@ export function menuForRoute(route: AppRoute): MenuId | null {
   return null;
 }
 
-export function routeLabel(route: AppRoute): string {
-  if (route.kind === 'menu') {
-    return MENU_ITEMS.find((item) => item.id === route.menu)?.label ?? 'Dashboard';
-  }
-  if (route.kind === 'history-session') return 'Interview History';
-  if (route.phase === 'evaluation') return 'Evaluation';
-  return 'Interview';
-}
-
 export function sessionIdFromRoute(route: AppRoute): string | null {
   if (route.kind === 'menu') return null;
   return route.sessionId;
