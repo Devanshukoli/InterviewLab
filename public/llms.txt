@@ -1,0 +1,22 @@
+# InterviewLab
+
+> InterviewLab is an AI-powered interview-preparation platform for systems engineers, site reliability engineers, and software architects. It uses a resume and optional job description to create targeted practice interviews, evaluate responses, and surface coaching insights.
+
+InterviewLab supports resume-based interview preparation, tailored technical and behavioral questions, response evaluation, interview history, learning-progress tracking, and account settings. Users provide their own supported LLM-provider API key to generate interview content.
+
+Authentication is required for product data and interview functionality. Do not include API keys, credentials, resumes, or other personal data in prompts or public documentation.
+
+## Product
+
+- [InterviewLab application](/): Use the web application to sign in, configure an API key, upload a resume, and begin a practice interview.
+- [Dashboard](/dashboard): View interview-preparation activity and start a new session.
+- [New interview](/new-interview): Create a tailored interview from a resume, an optional job description, and selected difficulty settings.
+- [Interview history](/interview-history): Review completed practice sessions and their evaluations.
+- [Resume library](/resumes): Manage resumes available for future interview sessions.
+- [Learning progress](/learning-progress): Review skill-level progress derived from completed interviews.
+- [Settings](/settings): Manage profile, appearance, connected LLM-provider API keys, and account security.
+
+## Technical documentation
+
+- [Project README](https://raw.githubusercontent.com/Devanshukoli/InterviewLab/main/README.md): Architecture, local setup, configuration, and operational guidance for InterviewLab.
+- [Database documentation](https://raw.githubusercontent.com/Devanshukoli/InterviewLab/main/sql/README.md): Supabase schema and migration instructions.
