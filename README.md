@@ -1,10 +1,10 @@
 # InterviewLabs 🔬
 > **AI-Powered Technical Interview Platform & Observability Platform**
 
-InterviewLabs is an enterprise-grade technical interview preparation platform built specifically for Systems Engineers, Site Reliability Engineers (SREs), and Software Architects. By evaluating a candidate's resume against specific Job Descriptions (JDs), InterviewLabs deploys a multi-agent AI pipeline to generate targeted technical scenarios, evaluate answers against architectural best practices, and trace every pipeline step with full OpenTelemetry instrumentation.
+InterviewLabs helps you prepare for technical interviews with AI-generated practice questions from your resume and optional job descriptions. Each session scores your answers and surfaces feedback so your next run can focus on weaker areas. The stack pairs a React client with an Express API, multi-agent LLM pipelines, and optional OpenTelemetry export for traces.
 
+**[Open InterviewLab on DeepWiki](https://deepwiki.com/Devanshukoli/InterviewLab)** for an AI-generated walkthrough of this repository (same content as clicking through from the DeepWiki site).
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Devanshukoli/InterviewLab)
 ---
 
 ## 🎯 Introduction
@@ -37,7 +37,52 @@ Unlike typical tutorial projects or simple wrapper UI applications, InterviewLab
 
 ## 📁 Project Structure
 
-InterviewLabs follows a modular monorepo structure separating full-stack Express server code, SQL migrations, shared domain types, and React client interfaces:
+InterviewLabs follows a modular layout: SQL migrations and shared types at the root, `server/` for the API and agents, and `src/` for the Vite + React client. In development, the Vite dev server attaches Express as middleware so `/api/*` calls hit the same process as the UI.
+
+### Request flow (development)
+
+When you run `npm run dev`, the browser talks to Vite. API calls route into Express middleware on the same origin.
+
+```mermaid
+flowchart LR
+  subgraph client["Browser (src/)"]
+    UI["React UI"]
+  end
+  subgraph dev["Vite dev server"]
+    Vite["Vite + HMR"]
+    MW["Express app (/api/*)"]
+  end
+  subgraph server["server/"]
+    API["Routes / controllers"]
+    Agents["modules/agents"]
+    LLM["services/llm.ts"]
+  end
+  UI --> Vite
+  Vite -->|"/ (assets)"| UI
+  UI -->|"/api/*"| MW
+  MW --> API
+  API --> Agents
+  Agents --> LLM
+```
+
+### Request flow (production)
+
+`npm run build` emits static frontend assets and `dist/server.cjs`. Production mode serves the built UI and forwards `/api` to the bundled Express app.
+
+```mermaid
+flowchart LR
+  subgraph client["Browser"]
+    UI["Static React bundle"]
+  end
+  subgraph node["Node (dist/server.cjs)"]
+    App["Express"]
+    API["/api routers"]
+    Agents["agents + services"]
+  end
+  UI -->|"/ + /api"| App
+  App --> API
+  API --> Agents
+```
 
 ```
 InterviewLabs/
@@ -156,9 +201,12 @@ InterviewLabs/
     │   ├── SettingsView.tsx                   # Account preferences, 2FA setup & AI provider configuration
     │   └── Sidebar.tsx                        # Collapsible primary navigation sidebar with keyboard shortcut
     │
-    ├── lib/                                   # Frontend Utilities
-    │   ├── auth.ts                            # Token storage, auto-refresh, auth listeners & fetchWithAuth wrapper
-    │   └── theme.ts                           # Dark/light theme initialization and sync
+    ├── lib/                                   # Frontend utilities
+    │   ├── auth.ts                            # Token storage, refresh, and fetchWithAuth wrapper
+    │   ├── app-route.ts                       # Client-side route state and URL sync
+    │   ├── cookie-consent.ts                  # First-visit cookie preference storage
+    │   ├── reading-font.ts                    # Reading font preference and preview
+    │   └── theme.ts                           # Dark / light / system theme
     │
     └── shared/types/                          # Shared TypeScript Types (Frontend & Backend)
         ├── agent-types.ts                     # Types for multi-agent inputs, outputs & pipelines
@@ -224,8 +272,8 @@ Follow these step-by-step instructions to get InterviewLabs running locally:
 
 ### Step 1: Clone & Install Dependencies
 ```bash
-git clone https://github.com/your-org/InterviewLabs.git
-cd InterviewLabs
+git clone https://github.com/Devanshukoli/InterviewLab.git
+cd InterviewLab
 
 # Install npm dependencies
 npm install
@@ -237,32 +285,16 @@ Create a `.env` file in the project root by copying `.env.example`:
 cp .env.example .env
 ```
 
-Ensure your `.env` contains the required configuration keys:
+Ensure your `.env` matches `.env.example`. Minimum for local AI calls:
+
 ```env
-# Server Configuration
-PORT=3000
 NODE_ENV=development
 JWT_SECRET=your_jwt_secret_here
-
-# AI Model Provider Keys
 GEMINI_API_KEY=your_gemini_api_key_here
 LLM_PROVIDER=gemini
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-
-# Google OAuth Credentials (Optional)
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
-# Supabase Credentials (Optional for cloud DB sync)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# OpenTelemetry Exporter Endpoint
-OTEL_SERVICE_NAME=InterviewLabs-api
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
+
+Optional keys include Google OAuth (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`), Supabase (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), Bring Your Own Key encryption (`BYOK_ENCRYPTION_KEY`), and OpenTelemetry (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, default `http://localhost:4318`). See `.env.example` for the full list and comments.
 
 ### Step 3: Database Setup (Supabase / PostgreSQL)
 If using Supabase or PostgreSQL:
@@ -281,7 +313,7 @@ If using Supabase or PostgreSQL:
 npm run dev
 ```
 
-Open `http://localhost:3000` in your browser.
+The dev server listens on the port in `PORT` from `.env` (default `3000` in `server/config.ts`). Open `http://localhost:3000` unless you changed it.
 
 ### Step 5: Production Build & Run
 To compile and test the production bundled build:
@@ -334,15 +366,30 @@ All API routes are prefixed under `/api` and protected with JWT authorization he
 
 ---
 
-## ⚠️ Known Gaps & Production Roadmap
+## ⚠️ Known gaps & roadmap
 
-To scale InterviewLabs into a multi-tenant platform handling heavy concurrent engineer traffic, the following architectural enhancements are planned:
+Tracked work lives in GitHub issues. Highlights as of the latest open list:
 
-- 🚨 **Asynchronous LLM Queue (BullMQ)**: AI generation and evaluation requests currently run within the Express HTTP request-response lifecycle. Introducing a Redis-backed queue (BullMQ) will allow asynchronous background job processing for zero-timeout execution under heavy API latency.
-- 🚨 **Distributed Redis Cache**: Active practice session states currently use in-memory state with Supabase sync. Distributing state via Redis (`ioredis`) will enable seamless horizontal scaling across container instances.
-- 🚨 **Gemini Live API Voice Streaming**: Transitioning question delivery and voice answers from REST JSON to WebSockets (`ws`) / WebRTC using Gemini Live API for real-time streaming audio interviews.
-- 🚨 **Distributed Rate Limiting**: Upgrading Express middleware rate limiters to a distributed Redis token-bucket limiter to prevent API quota exhaustion.
-- 🚨 **E2E Testing Suite**: Expanding unit test coverage for AI agent responses and adding Playwright end-to-end user workflow tests.
+| Area | Issue |
+|------|--------|
+| CI/CD | [#47](https://github.com/Devanshukoli/InterviewLab/issues/47) |
+| Security (LLM / BYOK) | [#49](https://github.com/Devanshukoli/InterviewLab/issues/49) |
+| Prompt injection hardening | [#48](https://github.com/Devanshukoli/InterviewLab/issues/48) |
+| Performance (latency) | [#50](https://github.com/Devanshukoli/InterviewLab/issues/50) |
+| Better Auth migration | [#39](https://github.com/Devanshukoli/InterviewLab/issues/39) |
+| Passkeys | [#9](https://github.com/Devanshukoli/InterviewLab/issues/9) |
+| Alternate / additional database | [#10](https://github.com/Devanshukoli/InterviewLab/issues/10) |
+| Memory bucket feature | [#41](https://github.com/Devanshukoli/InterviewLab/issues/41) |
+| LeetCode suggestions from resume | [#40](https://github.com/Devanshukoli/InterviewLab/issues/40) |
+| Billing checkout | [#12](https://github.com/Devanshukoli/InterviewLab/issues/12) |
+| Feedback & review systems | [#8](https://github.com/Devanshukoli/InterviewLab/issues/8), [#7](https://github.com/Devanshukoli/InterviewLab/issues/7) |
+| UI polish (landing, auth copy, dashboard) | [#36](https://github.com/Devanshukoli/InterviewLab/issues/36), [#38](https://github.com/Devanshukoli/InterviewLab/issues/38), [#21](https://github.com/Devanshukoli/InterviewLab/issues/21) |
+| History pagination | [#27](https://github.com/Devanshukoli/InterviewLab/issues/27) |
+| Resume preview | [#34](https://github.com/Devanshukoli/InterviewLab/issues/34) |
+| Evaluation flow / question quality | [#20](https://github.com/Devanshukoli/InterviewLab/issues/20), [#11](https://github.com/Devanshukoli/InterviewLab/issues/11), [#3](https://github.com/Devanshukoli/InterviewLab/issues/3) |
+| Cold start / demo video | [#33](https://github.com/Devanshukoli/InterviewLab/issues/33), [#16](https://github.com/Devanshukoli/InterviewLab/issues/16) |
+
+Older README items such as async LLM queues, Redis session caching, Gemini Live audio, distributed rate limits, and a broader E2E suite are still valid directionally; they are not all filed as separate issues yet.
 
 ---
 
