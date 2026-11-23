@@ -6,6 +6,10 @@ import { User, db, stringToUUID } from '../db';
 import { userContextStorage } from './userContext.middleware';
 import { getSupabaseClient } from '../services/supabase';
 import { logger } from '../observability';
+import {
+  REFRESH_TOKEN_JWT_EXPIRES_IN,
+  refreshTokenExpiresAt,
+} from '../auth/session-duration';
 
 export interface JwtPayload {
   id: string;
@@ -98,7 +102,7 @@ export function isTokenRevoked(token: string, jti?: string): boolean {
 }
 
 /**
- * Signs a refresh JWT token for user session renewal (valid for 7 days)
+ * Signs a refresh JWT token for user session renewal (see session-duration.ts).
  */
 export function generateRefreshToken(user: { id: string; email: string }, tokenId: string): string {
   const payload: RefreshJwtPayload = {
@@ -109,8 +113,8 @@ export function generateRefreshToken(user: { id: string; email: string }, tokenI
   };
 
   return jwt.sign(payload, config.jwtSecret, {
-    expiresIn: '7d', // Refresh token valid for 7 days
-    issuer: 'InterviewLab-Auth'
+    expiresIn: REFRESH_TOKEN_JWT_EXPIRES_IN,
+    issuer: 'InterviewLab-Auth',
   });
 }
 
@@ -133,7 +137,7 @@ export function generateTokens(user: User | { id: string; email: string; name: s
     id: tokenId,
     userId: user.id,
     token: refreshToken,
-    expiresAt: Date.now() + 7 * 24 * 3600 * 1000,
+    expiresAt: refreshTokenExpiresAt(),
     revoked: false,
     createdAt: new Date().toISOString()
   });

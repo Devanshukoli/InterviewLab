@@ -69,7 +69,9 @@ export async function refreshAccessToken(): Promise<string | null> {
 
         return newAccessToken;
       } else {
-        clearAuthTokens();
+        if (res.status === 401 || res.status === 403) {
+          clearAuthTokens();
+        }
         return null;
       }
     } catch (err) {

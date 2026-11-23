@@ -6,6 +6,7 @@ import { ConflictError, UnauthorizedError, BadRequestError } from '../../middlew
 import { TotpService } from '../../services/totp';
 import crypto from 'crypto';
 import { logger } from '../../observability';
+import { REFRESH_TOKEN_TTL_MS } from '../../auth/session-duration';
 
 interface MfaSession {
   mfaToken: string;
@@ -768,7 +769,7 @@ export class AuthService {
           id: newDecoded.tokenId,
           user_id: stringToUUID(user.id),
           token: newRefreshToken,
-          expires_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+          expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
           revoked: false
         }));
       } catch (e) {}

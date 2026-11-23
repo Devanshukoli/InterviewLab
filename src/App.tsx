@@ -159,10 +159,19 @@ export default function App() {
 
   const checkCurrentUser = async () => {
     try {
+      const refreshToken = localStorage.getItem('refresh_token');
+      const accessToken = localStorage.getItem('auth_token');
+      if (refreshToken && (!accessToken || isTokenExpiringSoon(accessToken, 0))) {
+        await refreshAccessToken();
+      }
+
       const res = await fetchWithAuth('/api/auth/me');
       if (res.status === 401) {
         clearAuthTokens();
         setUser(null);
+        return;
+      }
+      if (!res.ok) {
         return;
       }
       const json = await res.json();
@@ -173,9 +182,8 @@ export default function App() {
         clearAuthTokens();
         setUser(null);
       }
-    } catch (e) {
-      clearAuthTokens();
-      setUser(null);
+    } catch {
+      /* Keep tokens on transient network errors (deploy blips, offline). */
     }
   };
 
