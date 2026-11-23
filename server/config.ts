@@ -7,10 +7,28 @@ import { resolveByokEncryptionKeyHex } from './api/auth/utils/crypto';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
+/** Deterministic 32-byte key used only when NODE_ENV is test and BYOK is unset. */
+const TEST_BYOK_KEY_HEX =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+function resolveByokKeyForEnv(raw: string | undefined): string {
+  const trimmed = String(raw ?? '').trim();
+  if (trimmed) {
+    return resolveByokEncryptionKeyHex(trimmed);
+  }
+  if (process.env.NODE_ENV === 'test') {
+    return resolveByokEncryptionKeyHex(TEST_BYOK_KEY_HEX);
+  }
+  throw new Error('BYOK_ENCRYPTION_KEY is not set');
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
-  BYOK_ENCRYPTION_KEY: z.string().optional().transform(v => resolveByokEncryptionKeyHex(v || process.env.BYOK_ENCRYPTION_KEY)),
+  BYOK_ENCRYPTION_KEY: z
+    .string()
+    .optional()
+    .transform((v) => resolveByokKeyForEnv(v || process.env.BYOK_ENCRYPTION_KEY)),
   SUPABASE_URL: z.string().optional().default(''),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
