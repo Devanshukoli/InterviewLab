@@ -4,6 +4,7 @@ import { ProfileService } from '../profile/profile.service';
 import { BadRequestError, UnauthorizedError, catchAsync, isEnvRelatedError } from '../../middleware/error_handling';
 import { config } from '../../config';
 import { logger } from '../../observability';
+import { REFRESH_TOKEN_TTL_MS } from '../../auth/session-duration';
 import {
   RegisterDto,
   LoginDto,
@@ -24,7 +25,7 @@ export class AuthController {
       res.cookie('refresh_token', data.refreshToken, {
         httpOnly: true,
         path: '/api/auth',
-        maxAge: 7 * 24 * 3600 * 1000,
+        maxAge: REFRESH_TOKEN_TTL_MS,
         sameSite: config.cookieSameSite,
         secure: config.cookieSecure,
       });
@@ -39,7 +40,7 @@ export class AuthController {
       res.cookie('refresh_token', data.refreshToken, {
         httpOnly: true,
         path: '/api/auth',
-        maxAge: 7 * 24 * 3600 * 1000,
+        maxAge: REFRESH_TOKEN_TTL_MS,
         sameSite: config.cookieSameSite,
         secure: config.cookieSecure,
       });
@@ -57,7 +58,7 @@ export class AuthController {
       res.cookie('refresh_token', data.refreshToken, {
         httpOnly: true,
         path: '/api/auth',
-        maxAge: 7 * 24 * 3600 * 1000,
+        maxAge: REFRESH_TOKEN_TTL_MS,
         sameSite: config.cookieSameSite,
         secure: config.cookieSecure,
       });
@@ -300,7 +301,7 @@ export class AuthController {
         res.cookie('refresh_token', refreshToken, {
           httpOnly: true,
           path: '/api/auth',
-          maxAge: 7 * 24 * 3600 * 1000,
+          maxAge: REFRESH_TOKEN_TTL_MS,
           sameSite: config.cookieSameSite,
           secure: config.cookieSecure,
         });
@@ -539,7 +540,7 @@ export class AuthController {
       res.cookie('refresh_token', data.refreshToken, {
         httpOnly: true,
         path: '/api/auth',
-        maxAge: 7 * 24 * 3600 * 1000,
+        maxAge: REFRESH_TOKEN_TTL_MS,
         sameSite: config.cookieSameSite,
         secure: config.cookieSecure,
       });

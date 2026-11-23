@@ -24,7 +24,7 @@ function collectTestFiles(dir, acc = []) {
   return acc;
 }
 
-const roots = ['src/lib', 'server/tests'];
+const roots = ['src/lib', 'server/tests', 'server/auth'];
 const files = roots.flatMap((root) => collectTestFiles(root)).sort();
 
 if (files.length === 0) {
