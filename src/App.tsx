@@ -161,12 +161,24 @@ export default function App() {
     try {
       const refreshToken = localStorage.getItem('refresh_token');
       const accessToken = localStorage.getItem('auth_token');
-      if (refreshToken && (!accessToken || isTokenExpiringSoon(accessToken, 0))) {
-        await refreshAccessToken();
+      const accessStale = !accessToken || isTokenExpiringSoon(accessToken, 0);
+
+      if (refreshToken && accessStale) {
+        const newAccess = await refreshAccessToken();
+        if (!newAccess) {
+          if (localStorage.getItem('refresh_token')) {
+            return;
+          }
+          setUser(null);
+          return;
+        }
       }
 
       const res = await fetchWithAuth('/api/auth/me');
       if (res.status === 401) {
+        if (localStorage.getItem('refresh_token')) {
+          return;
+        }
         clearAuthTokens();
         setUser(null);
         return;
