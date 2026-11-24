@@ -165,10 +165,10 @@ export function validateAndNormalizeEvaluationResult(obj: any): {
  * EvaluationAgent grades candidate interview responses against questions and expected topics.
  */
 export class EvaluationAgent {
-  private providerName: string;
+  private providerName?: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName;
   }
 
   /**
@@ -244,10 +244,10 @@ export class EvaluationAgent {
         span.addEvent('LLM Request Started', { 'llm.attempt': 1 });
         rawOutput = await provider.generate(initialPrompt, systemInstruction);
         const llmDuration = Date.now() - llmStartTime;
-        recordMetric.recordLLMRequestDuration(llmDuration, { agent: 'evaluation-agent', 'llm.attempt': 1, 'llm.provider': this.providerName });
+        recordMetric.recordLLMRequestDuration(llmDuration, { agent: 'evaluation-agent', 'llm.attempt': 1, 'llm.provider': provider.name });
         span.addEvent('LLM Response Received', { 'llm.attempt': 1, 'response.length': rawOutput.length });
       } catch (llmErr: any) {
-        recordMetric.recordLLMRequestFailure({ agent: 'evaluation-agent', 'llm.attempt': 1, 'llm.provider': this.providerName, error: llmErr.message });
+        recordMetric.recordLLMRequestFailure({ agent: 'evaluation-agent', 'llm.attempt': 1, 'llm.provider': provider.name, error: llmErr.message });
         logger.error('❌ [EvaluationAgent] LLM generation call failed on first attempt:', llmErr);
         throw new EvaluationLLMError(`LLM generation failed: ${llmErr.message}`, { cause: llmErr });
       }
@@ -311,10 +311,10 @@ Candidate Answer: "${candidateAnswer.trim()}"`;
         span.addEvent('LLM Request Started', { 'llm.attempt': 2 });
         retryRawOutput = await provider.generate(retryPrompt, systemInstruction);
         const retryDuration = Date.now() - retryStartTime;
-        recordMetric.recordLLMRequestDuration(retryDuration, { agent: 'evaluation-agent', 'llm.attempt': 2, 'llm.provider': this.providerName });
+        recordMetric.recordLLMRequestDuration(retryDuration, { agent: 'evaluation-agent', 'llm.attempt': 2, 'llm.provider': provider.name });
         span.addEvent('LLM Response Received', { 'llm.attempt': 2, 'response.length': retryRawOutput.length });
       } catch (retryLlmErr: any) {
-        recordMetric.recordLLMRequestFailure({ agent: 'evaluation-agent', 'llm.attempt': 2, 'llm.provider': this.providerName, error: retryLlmErr.message });
+        recordMetric.recordLLMRequestFailure({ agent: 'evaluation-agent', 'llm.attempt': 2, 'llm.provider': provider.name, error: retryLlmErr.message });
         logger.error('❌ [EvaluationAgent] LLM generation call failed on retry:', retryLlmErr);
         throw new EvaluationLLMError(`LLM generation failed on retry: ${retryLlmErr.message}`, { cause: retryLlmErr });
       }

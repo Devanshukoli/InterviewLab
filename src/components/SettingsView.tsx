@@ -321,6 +321,9 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   };
 
   const interviewKeyId = byokKeys.find((k) => k.isPrimary)?.id ?? byokKeys[0]?.id;
+  const validByokKeys = byokKeys.filter((k) => k.isValidated);
+  const runtimeInterviewKey =
+    validByokKeys.find((k) => k.isPrimary) ?? validByokKeys[0];
 
   // Notifications
   const [emailSummaries, setEmailSummaries] = useState(user?.notifications?.emailSummaries ?? true);
@@ -1295,6 +1298,11 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                               </select>
                               <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
                             </div>
+                            {runtimeInterviewKey && k.id === runtimeInterviewKey.id ? (
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                Interview agents use {runtimeInterviewKey.preferredModel || modelChoices[0]} for generation and evaluation.
+                              </p>
+                            ) : null}
                           </label>
                         </div>
                         );

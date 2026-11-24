@@ -137,10 +137,10 @@ export function validateAndNormalizeJDAnalysis(obj: any): {
  * JDAgent analyzes job descriptions using the configured LLM provider.
  */
 export class JDAgent {
-  private providerName: string;
+  private providerName?: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName;
   }
 
   /**
@@ -169,10 +169,10 @@ export class JDAgent {
         span.addEvent('LLM Request Started', { 'llm.attempt': 1 });
         rawOutput = await provider.generate(initialPrompt, systemInstruction);
         const llmDuration = Date.now() - llmStartTime;
-        recordMetric.recordLLMRequestDuration(llmDuration, { agent: 'jd-agent', 'llm.attempt': 1, 'llm.provider': this.providerName });
+        recordMetric.recordLLMRequestDuration(llmDuration, { agent: 'jd-agent', 'llm.attempt': 1, 'llm.provider': provider.name });
         span.addEvent('LLM Response Received', { 'llm.attempt': 1, 'response.length': rawOutput.length });
       } catch (llmErr: any) {
-        recordMetric.recordLLMRequestFailure({ agent: 'jd-agent', 'llm.attempt': 1, 'llm.provider': this.providerName, error: llmErr.message });
+        recordMetric.recordLLMRequestFailure({ agent: 'jd-agent', 'llm.attempt': 1, 'llm.provider': provider.name, error: llmErr.message });
         logger.error('❌ [JDAgent] LLM generation call failed on first attempt:', llmErr);
         throw new JDLLMError(`LLM generation failed: ${llmErr.message}`, { cause: llmErr });
       }
@@ -236,10 +236,10 @@ ${jdText.trim()}
         span.addEvent('LLM Request Started', { 'llm.attempt': 2 });
         retryRawOutput = await provider.generate(retryPrompt, systemInstruction);
         const retryDuration = Date.now() - retryStartTime;
-        recordMetric.recordLLMRequestDuration(retryDuration, { agent: 'jd-agent', 'llm.attempt': 2, 'llm.provider': this.providerName });
+        recordMetric.recordLLMRequestDuration(retryDuration, { agent: 'jd-agent', 'llm.attempt': 2, 'llm.provider': provider.name });
         span.addEvent('LLM Response Received', { 'llm.attempt': 2, 'response.length': retryRawOutput.length });
       } catch (retryLlmErr: any) {
-        recordMetric.recordLLMRequestFailure({ agent: 'jd-agent', 'llm.attempt': 2, 'llm.provider': this.providerName, error: retryLlmErr.message });
+        recordMetric.recordLLMRequestFailure({ agent: 'jd-agent', 'llm.attempt': 2, 'llm.provider': provider.name, error: retryLlmErr.message });
         logger.error('❌ [JDAgent] LLM generation call failed on retry:', retryLlmErr);
         throw new JDLLMError(`LLM generation failed on retry: ${retryLlmErr.message}`, { cause: retryLlmErr });
       }

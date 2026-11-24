@@ -75,7 +75,7 @@ function toKeyDto(record: UserApiKeyRecord): UserKeyResponseDto {
     id: record.id,
     provider: record.provider,
     keyLastFour: record.keyLastFour,
-    preferredModel: record.preferredModel,
+    preferredModel: record.preferredModel || DEFAULT_MODEL_PER_PROVIDER[record.provider],
     isValid: record.isValid,
     lastValidatedAt: record.lastValidatedAt,
     isPrimary: Boolean(record.isPrimary)
