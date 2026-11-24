@@ -47,21 +47,6 @@ export default function NewInterviewFlow({
   const [numberOfQuestions, setNumberOfQuestions] = useState<number>(5);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
-  const handleSeedDemo = () => {
-    setResumeText(`Devanshu Koli
-Senior Software & Platform Engineer
-Skills: TypeScript, React 19, Express, PostgreSQL, Docker, AWS, OpenTelemetry, System Architecture.
-Experience: 6 years building distributed cloud applications and high-performance Web APIs.`);
-    setResumeTitle('Senior Software Engineer Resume');
-    setSelectedResumeId(null);
-
-    setJdText(`Staff Frontend & Systems Engineer
-Requirements:
-- Deep experience with React, TypeScript, and state architecture.
-- Experience with REST API design, performance optimization, and developer tooling.`);
-    setSkipJd(false);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedResumeId && !resumeText.trim()) {
@@ -129,22 +114,11 @@ Requirements:
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
-      
-      {/* Title */}
-      <div className="border-b border-zinc-200 dark:border-zinc-800 pb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">Configure New Interview</h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Set up your resume, optional job description, and custom difficulty settings.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={handleSeedDemo}
-          className="text-xs font-mono text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-        >
-          💡 Fill Demo Content
-        </button>
+      <div className="border-b border-zinc-200 dark:border-zinc-800 pb-5">
+        <h1 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">Configure New Interview</h1>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+          Set up your resume, optional job description, and custom difficulty settings.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
