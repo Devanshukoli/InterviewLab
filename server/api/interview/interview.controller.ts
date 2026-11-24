@@ -8,6 +8,7 @@ import {
   UploadJobDescriptionDto,
   GenerateQuestionsDto,
   EvaluateDto,
+  SubmitAnswerDto,
   UpdateResumeDto,
 } from '../../dtos/interview.dto';
 
@@ -138,9 +139,15 @@ export class InterviewController {
     res.json({ success: true, data });
   });
 
-  static evaluate = catchAsync(async (req: Request<any, any, EvaluateDto>, res: Response): Promise<void> => {
+  static submitAnswer = catchAsync(async (req: Request<any, any, SubmitAnswerDto>, res: Response): Promise<void> => {
     const { sessionId, questionId, answerText } = req.body;
-    const data = await InterviewService.evaluate(sessionId, questionId, answerText, req.user);
+    const data = await InterviewService.submitAnswer(sessionId, questionId, answerText, req.user);
+    res.json({ success: true, data });
+  });
+
+  static evaluate = catchAsync(async (req: Request<any, any, EvaluateDto>, res: Response): Promise<void> => {
+    const { sessionId } = req.body;
+    const data = await InterviewService.evaluateSession(sessionId, req.user);
     res.json({ success: true, data });
   });
 

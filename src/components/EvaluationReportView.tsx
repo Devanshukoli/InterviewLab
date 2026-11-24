@@ -2,19 +2,21 @@ import React from 'react';
 import { 
   CheckCircle2, 
   AlertTriangle, 
-  TrendingUp, 
   ArrowLeft, 
   Award, 
-  BookOpen 
+  BookOpen,
+  Loader2
 } from 'lucide-react';
 import { InterviewSession } from '../types';
 
 interface EvaluationReportViewProps {
   session: InterviewSession;
+  isEvaluating?: boolean;
+  error?: string | null;
   onBackToDashboard: () => void;
 }
 
-export default function EvaluationReportView({ session, onBackToDashboard }: EvaluationReportViewProps) {
+export default function EvaluationReportView({ session, isEvaluating, error, onBackToDashboard }: EvaluationReportViewProps) {
   const report = {
     overallScore: session.coachingReport?.overallScore,
     domainStrengths: session.coachingReport?.domainStrengths,
@@ -25,6 +27,17 @@ export default function EvaluationReportView({ session, onBackToDashboard }: Eva
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-12">
+      {isEvaluating && (
+        <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] rounded-xl p-8 flex items-center gap-3 text-sm text-zinc-700 dark:text-zinc-300">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Scoring every answer now. This runs once at the end of the interview.
+        </div>
+      )}
+      {error && (
+        <div className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 rounded-xl p-4 text-sm text-red-800 dark:text-red-300">
+          {error}
+        </div>
+      )}
       
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-5">

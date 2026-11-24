@@ -17,10 +17,15 @@ export const generateQuestionsSchema = z.object({
 }).passthrough();
 export type GenerateQuestionsDto = z.infer<typeof generateQuestionsSchema>;
 
-export const evaluateSchema = z.object({
+export const submitAnswerSchema = z.object({
   sessionId: z.string().min(1, 'sessionId is required'),
   questionId: z.string().min(1, 'questionId is required'),
   answerText: z.string().min(1, 'answerText is required')
+});
+export type SubmitAnswerDto = z.infer<typeof submitAnswerSchema>;
+
+export const evaluateSchema = z.object({
+  sessionId: z.string().min(1, 'sessionId is required')
 });
 export type EvaluateDto = z.infer<typeof evaluateSchema>;
 
