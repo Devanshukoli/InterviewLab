@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { 
   Send, 
   Loader2, 
-  Info, 
-  HelpCircle, 
   CheckCircle2, 
-  ArrowRight,
   AlertCircle
 } from 'lucide-react';
 import { InterviewSession } from '../types';
+import {
+  afterAnswerSubmitAction,
+  formatAnswerSaveError,
+} from '../lib/live-interview-submit';
 
 interface ActiveInterviewSessionProps {
   session: InterviewSession;
@@ -25,28 +26,34 @@ export default function ActiveInterviewSession({
 }: ActiveInterviewSessionProps) {
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [currentAnswer, setCurrentAnswer] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const questionsList = session.questions || [];
   const activeQuestion = questionsList[activeQuestionIndex];
   const isLastQuestion = activeQuestionIndex === questionsList.length - 1;
-  const currentEvaluation = activeQuestion ? session.evaluations?.[activeQuestion.id] : undefined;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentAnswer.trim()) return;
 
+    setSaveError(null);
+
+    let submitSucceeded = false;
     try {
       await onAnswerSubmit(activeQuestion.id, currentAnswer);
-    } catch {
-      return;
+      submitSucceeded = true;
+    } catch (err) {
+      setSaveError(formatAnswerSaveError(err));
     }
 
-    if (!isLastQuestion) {
+    const action = afterAnswerSubmitAction(submitSucceeded, isLastQuestion);
+    if (action === 'stay') return;
+    if (action === 'next') {
       setActiveQuestionIndex(prev => prev + 1);
       setCurrentAnswer('');
-    } else {
-      onCompleteSession();
+      return;
     }
+    onCompleteSession();
   };
 
   const handleAutoFill = () => {
@@ -100,16 +107,23 @@ export default function ActiveInterviewSession({
         </div>
       )}
 
-      {/* Evaluation Feedback if answered */}
-      {currentEvaluation && (
-        <div className="border border-green-300 dark:border-green-800/60 bg-green-50 dark:bg-green-950/20 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-green-700 dark:text-green-400 uppercase tracking-wider flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4" /> Question Score: {currentEvaluation.score}/100
-            </span>
-            <span className="text-xs text-zinc-600 dark:text-zinc-400 font-mono capitalize">Clarity: {currentEvaluation.clarityRating}</span>
+      {saveError && (
+        <div
+          role="alert"
+          className="border border-red-300 dark:border-red-800/60 bg-red-50 dark:bg-red-950/30 rounded-xl p-4 flex items-start gap-3"
+        >
+          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0 space-y-1">
+            <p className="text-xs font-semibold text-red-800 dark:text-red-300">Network issue</p>
+            <p className="text-xs text-red-700 dark:text-red-200/90 leading-relaxed">{saveError}</p>
           </div>
-          <p className="text-xs text-zinc-800 dark:text-zinc-300 leading-relaxed">{currentEvaluation.feedback}</p>
+          <button
+            type="button"
+            onClick={() => setSaveError(null)}
+            className="text-[10px] font-mono uppercase text-red-600 dark:text-red-400 hover:underline shrink-0"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 

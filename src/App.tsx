@@ -334,7 +334,6 @@ export default function App() {
       }
     } catch (e: any) {
       console.error('Answer save error:', e);
-      alert('Error saving answer: ' + e.message);
       throw e;
     } finally {
       setIsSavingAnswer(false);
