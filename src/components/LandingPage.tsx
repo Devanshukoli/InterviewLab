@@ -3,16 +3,12 @@ import AppLogo from './AppLogo';
 import { 
   Sparkles, 
   FileText, 
-  Cpu, 
   Target, 
   TrendingUp, 
   ChevronDown, 
   ChevronUp, 
   CheckCircle2, 
-  ArrowRight,
-  Shield,
-  Zap,
-  Globe
+  ArrowRight
 } from 'lucide-react';
 
 interface LandingPageProps {
@@ -75,9 +71,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative pt-24 pb-20 px-6 lg:px-12 max-w-6xl mx-auto text-center space-y-8">
-        
+      <section className="relative min-h-[calc(100vh-4rem)] px-6 lg:px-12 max-w-6xl mx-auto flex flex-col items-center justify-center text-center space-y-8">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 font-mono">
           <Sparkles className="w-3.5 h-3.5 text-blue-400" />
           <span>Next-gen AI Interview Preparation Engine</span>
@@ -105,29 +99,6 @@ export default function LandingPage({ onGetStarted, onSignIn }: LandingPageProps
           >
             Sign In to Dashboard
           </button>
-        </div>
-
-        {/* Hero Code / UI Preview Mock */}
-        <div className="mt-16 border border-zinc-800/80 rounded-xl bg-zinc-950/60 p-4 sm:p-6 shadow-2xl text-left overflow-hidden relative">
-          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 mb-4">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-zinc-800"></span>
-              <span className="w-3 h-3 rounded-full bg-zinc-800"></span>
-              <span className="w-3 h-3 rounded-full bg-zinc-800"></span>
-              <span className="text-xs font-mono text-zinc-500 ml-2">interview-session-preview.ts</span>
-            </div>
-            <span className="text-[10px] font-mono bg-blue-950 border border-blue-800 text-blue-300 px-2 py-0.5 rounded">AI TAILORED</span>
-          </div>
-          
-          <div className="space-y-3 font-mono text-xs text-zinc-300">
-            <div className="text-zinc-500">// AI Agent analyzes candidate resume skills: React, TypeScript, Kubernetes</div>
-            <div className="p-3 bg-[#09090b] border border-zinc-800/60 rounded-md">
-              <span className="text-blue-400 font-bold">Q1:</span> Given your experience scaling TypeScript services, how do you handle state propagation under burst traffic conditions?
-            </div>
-            <div className="p-3 bg-zinc-900/40 border border-zinc-800/40 rounded-md text-zinc-400">
-              <span className="text-green-400 font-bold">Feedback Score: 92/100</span> — Excellent architectural articulation. Identified key backpressure metrics & caching strategies.
-            </div>
-          </div>
         </div>
       </section>
 
