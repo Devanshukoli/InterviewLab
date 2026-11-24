@@ -32,6 +32,14 @@ describe('selectByokLlmTarget', () => {
     assert.deepEqual(target, { provider: 'openai', model: 'gpt-4o-mini' });
   });
 
+  it('skips an invalid primary and uses the next valid key', () => {
+    const target = selectByokLlmTarget([
+      { ...openai, isValid: false },
+      gemini,
+    ]);
+    assert.deepEqual(target, { provider: 'gemini', model: 'gemini-1.5-pro' });
+  });
+
   it('fills the provider default when preferredModel is empty', () => {
     const target = selectByokLlmTarget([
       { provider: 'gemini', isValid: true, isPrimary: true },
