@@ -46,7 +46,9 @@ export default function App() {
 
   // Action / Loading States
   const [isGeneratingSession, setIsGeneratingSession] = useState(false);
-  const [isEvaluatingAnswer, setIsEvaluatingAnswer] = useState(false);
+  const [isSavingAnswer, setIsSavingAnswer] = useState(false);
+  const [isEvaluatingSession, setIsEvaluatingSession] = useState(false);
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
 
   // Profile / Billing Modals
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -310,10 +312,10 @@ export default function App() {
   // Answer Submission Handler
   const handleAnswerSubmit = async (questionId: string, answerText: string) => {
     if (!currentSession) return;
-    setIsEvaluatingAnswer(true);
+    setIsSavingAnswer(true);
 
     try {
-      const res = await fetchWithAuth('/api/interview/evaluate', {
+      const res = await fetchWithAuth('/api/interview/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -327,12 +329,15 @@ export default function App() {
       if (json.success) {
         setCurrentSession(json.data.session);
         fetchHistory();
-        fetchProgress();
+      } else {
+        throw new Error(json.message || 'Failed to save answer');
       }
     } catch (e: any) {
-      console.error('Evaluation error:', e);
+      console.error('Answer save error:', e);
+      alert('Error saving answer: ' + e.message);
+      throw e;
     } finally {
-      setIsEvaluatingAnswer(false);
+      setIsSavingAnswer(false);
     }
   };
 
@@ -522,6 +527,45 @@ export default function App() {
     };
   }, [route, sessions, historyLoaded, user]);
 
+  useEffect(() => {
+    if (route.kind !== 'live-session' || route.phase !== 'evaluation') return;
+    if (!currentSession || currentSession.id !== route.sessionId) return;
+    if (currentSession.status === 'completed' && currentSession.coachingReport) {
+      setIsEvaluatingSession(false);
+      setEvaluationError(null);
+      return;
+    }
+    let cancelled = false;
+    setIsEvaluatingSession(true);
+    setEvaluationError(null);
+    fetchWithAuth('/api/interview/evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: currentSession.id }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.success && json.data?.session) {
+          setCurrentSession(json.data.session);
+          fetchHistory();
+          fetchProgress();
+        } else {
+          setEvaluationError(json.message || json.error || 'Failed to evaluate this interview');
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setEvaluationError(err.message || 'Failed to evaluate this interview');
+      })
+      .finally(() => {
+        if (!cancelled) setIsEvaluatingSession(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [route, currentSession?.id, currentSession?.status]);
+
   // Unauthenticated View -> Render Landing Page
   if (!user) {
     return (
@@ -615,13 +659,15 @@ export default function App() {
                 sessionId: currentSession.id,
                 phase: 'evaluation',
               })}
-              isEvaluating={isEvaluatingAnswer}
+              isEvaluating={isSavingAnswer}
             />
           )}
 
           {route.kind === 'live-session' && route.phase === 'evaluation' && currentSession?.id === route.sessionId && (
             <EvaluationReportView
               session={currentSession}
+              isEvaluating={isEvaluatingSession}
+              error={evaluationError}
               onBackToDashboard={() => navigate({ kind: 'menu', menu: 'dashboard' })}
             />
           )}

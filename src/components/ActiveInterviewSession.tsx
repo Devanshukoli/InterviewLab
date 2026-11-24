@@ -35,7 +35,11 @@ export default function ActiveInterviewSession({
     e.preventDefault();
     if (!currentAnswer.trim()) return;
 
-    await onAnswerSubmit(activeQuestion.id, currentAnswer);
+    try {
+      await onAnswerSubmit(activeQuestion.id, currentAnswer);
+    } catch {
+      return;
+    }
 
     if (!isLastQuestion) {
       setActiveQuestionIndex(prev => prev + 1);
@@ -151,7 +155,7 @@ export default function ActiveInterviewSession({
             {isEvaluating ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
-                <span>Evaluating Answer...</span>
+                <span>Saving Answer...</span>
               </>
             ) : isLastQuestion ? (
               <>

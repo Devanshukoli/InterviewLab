@@ -2,12 +2,31 @@ import crypto from 'crypto';
 import { db, InterviewSession, GeneratedQuestion, Evaluation, Resume, JobDescription, stringToUUID } from '../../db';
 import { tracer, getAITelemetryAttributes, recordMetric, logger } from '../../observability';
 import { getLLMProvider } from '../../services/llm';
-import { NotFoundError, AppError } from '../../middleware/error_handling';
+import { NotFoundError, BadRequestError, AppError } from '../../middleware/error_handling';
 import { getSupabaseClient, unwrap } from '../../services/supabase';
 import { defaultEvaluationAgent } from '../../modules/agents/evaluation-agent';
 import { ByokService } from '../byok/byok.service';
 import { historyClientQuestionKey, historyQuestionKeyByDbId } from './history-question-keys';
 import { employmentGapsFromResume, preferEmploymentGapQuestions } from '../../modules/agents/employment-gaps';
+import {
+  pendingEvaluationJobs,
+  runEvaluationJobs,
+  sessionHasEveryAnswer,
+  storedEvaluationFromResult,
+  type EvaluationJob,
+} from './deferred-evaluation';
+import { EvaluationResult } from '../../../src/shared/types';
+
+export type EvaluationAgentLike = {
+  evaluateAnswer: (
+    questionText: string,
+    answerText: string,
+    expectedConcepts: string[],
+    userId?: string
+  ) => Promise<EvaluationResult>;
+};
+
+const evaluateSessionInFlight = new Map<string, Promise<{ session: InterviewSession }>>();
 
 export function ensureUUID(id?: string): string {
   return stringToUUID(id);
@@ -509,210 +528,292 @@ Do NOT include any markdown formatting or code fences. Output purely raw JSON ar
     }
   }
 
-  static async evaluate(sessionId: string, questionId: string, answerText: string, currentUser?: { id?: string }) {
+  static async loadSession(sessionId: string) {
+    const supabase = getSupabaseClient();
+    let session = db.sessions.get(sessionId);
+    if (!session && supabase) {
+      session = (await InterviewService.getSessionById(sessionId)) || undefined;
+    }
+    if (!session) {
+      throw new NotFoundError(`Session with ID '${sessionId}' not found`);
+    }
+    return session;
+  }
+
+  static async submitAnswer(
+    sessionId: string,
+    questionId: string,
+    answerText: string,
+    currentUser?: { id?: string }
+  ) {
+    const userId = currentUser?.id || 'usr-anonymous';
+    const session = await InterviewService.loadSession(sessionId);
+    const question = session.questions.find((q) => q.id === questionId);
+    if (!question) {
+      throw new NotFoundError(`Question with ID '${questionId}' not found in session`);
+    }
+
+    session.answers[questionId] = answerText;
+    db.sessions.set(sessionId, session);
+    await InterviewService.persistAnswerRecord(sessionId, session, questionId, answerText, userId);
+    return { session };
+  }
+
+  static async evaluateSession(
+    sessionId: string,
+    currentUser?: { id?: string },
+    deps?: { evaluationAgent?: EvaluationAgentLike }
+  ) {
+    const existing = evaluateSessionInFlight.get(sessionId);
+    if (existing) return existing;
+
+    const work = InterviewService.runEvaluateSession(sessionId, currentUser, deps).finally(() => {
+      evaluateSessionInFlight.delete(sessionId);
+    });
+    evaluateSessionInFlight.set(sessionId, work);
+    return work;
+  }
+
+  private static async runEvaluateSession(
+    sessionId: string,
+    currentUser?: { id?: string },
+    deps?: { evaluationAgent?: EvaluationAgentLike }
+  ) {
     const user = currentUser;
+    const userId = user?.id || 'usr-anonymous';
     const aiAttrs = getAITelemetryAttributes({
       userId: user?.id,
       sessionId
     });
-    const span = tracer.startSpan('evaluation-agent:evaluateAnswer', undefined, undefined, aiAttrs);
+    const span = tracer.startSpan('evaluation-agent:evaluateSession', undefined, undefined, aiAttrs);
 
     try {
-      const userId = user?.id || 'usr-anonymous';
-      const supabase = getSupabaseClient();
-
-      let session = db.sessions.get(sessionId);
-      if (!session && supabase) {
-        session = (await InterviewService.getSessionById(sessionId)) || undefined;
+      const session = await InterviewService.loadSession(sessionId);
+      if (!sessionHasEveryAnswer(session)) {
+        throw new BadRequestError('Every question needs an answer before evaluation');
       }
 
-      if (!session) {
-        throw new NotFoundError(`Session with ID '${sessionId}' not found`);
+      const jobs = pendingEvaluationJobs(session);
+      if (session.status === 'completed' && jobs.length === 0) {
+        span.end('OK', { 'evaluation.jobs': 0, 'session.status': session.status });
+        return { session };
       }
-
-      const question = session.questions.find(q => q.id === questionId);
-      if (!question) {
-        throw new NotFoundError(`Question with ID '${questionId}' not found in session`);
-      }
-
-      session.answers[questionId] = answerText;
-
-      let score = Math.floor(Math.random() * 25) + 70;
-      let clarityRating: 'poor' | 'fair' | 'good' | 'excellent' = score > 85 ? 'excellent' : 'good';
-      let feedback = `Strong response. You accurately identified key domain concepts for ${question.topic}. Make sure to detail telemetry metrics and edge case handling downstream.`;
-      let missingPoints = ['Tracing context propagation across services', 'Resource-bound backpressure handles'];
-      let suggestedAnswer = `To enhance this answer, elaborate on telemetry metadata spans and explicit error boundary resilience mechanisms.`;
-
-      let aiEvalSuccess = false;
-      try {
-        const evalResult = await defaultEvaluationAgent.evaluateAnswer(
-          question.questionText || question.topic,
-          answerText,
-          question.expectedConcepts,
-          userId
-        );
-
-        score = evalResult.score;
-        clarityRating = score >= 85 ? 'excellent' : score >= 70 ? 'good' : score >= 50 ? 'fair' : 'poor';
-        feedback = evalResult.feedback || feedback;
-        missingPoints = evalResult.missingConcepts.length > 0 ? evalResult.missingConcepts : missingPoints;
-        suggestedAnswer = evalResult.idealAnswer || suggestedAnswer;
-        aiEvalSuccess = true;
-      } catch (aiErr) {
-        logger.warn('🔮 [InterviewService] EvaluationAgent call failed, using baseline evaluator:', aiErr);
-      }
-
-      const evalId = 'ev-' + Math.random().toString(36).substr(2, 9);
-      const evaluation: Evaluation = {
-        id: evalId,
-        questionId,
-        score,
-        clarityRating,
-        feedback,
-        missingPoints,
-        suggestedAnswer,
-        evaluatedAt: new Date().toISOString()
-      };
-
-      session.evaluations[questionId] = evaluation;
-      if (!aiEvalSuccess) {
-        recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': score });
-      }
-
+      const agent = deps?.evaluationAgent || defaultEvaluationAgent;
       const now = new Date().toISOString();
 
-      if (supabase) {
-        try {
-          const questionUuid = stringToUUID(sessionId + '-' + questionId);
-
-          // Dependency check: Validate question_id exists in generated_questions before inserting answer
-          const { data: existingQuestion } = await supabase
-            .from('generated_questions')
-            .select('id')
-            .eq('id', questionUuid)
-            .maybeSingle();
-
-          if (!existingQuestion) {
-            logger.info(`🔮 [InterviewService] Question ${questionUuid} not found in generated_questions. Persisting question before recording answer...`);
-            const qIndex = session.questions.findIndex(q => q.id === questionId);
-            await unwrap(supabase.from('generated_questions').upsert({
-              id: questionUuid,
-              session_id: stringToUUID(sessionId),
-              question_text: question.questionText,
-              type: InterviewService.sanitizeQuestionType(question.type),
-              topic: question.topic || question.type || 'General',
-              difficulty: InterviewService.sanitizeDifficulty(question.difficulty),
-              expected_concepts: question.expectedConcepts,
-              order_index: qIndex >= 0 ? qIndex : 0
-            }));
-          }
-
-          await unwrap(supabase.from('answers').upsert({
-            id: stringToUUID(sessionId + '-ans-' + questionId),
-            question_id: questionUuid,
-            session_id: stringToUUID(sessionId),
-            user_id: stringToUUID(userId),
-            answer_text: answerText,
-            submitted_at: now
-          }));
-
-          await unwrap(supabase.from('evaluations').upsert({
-            id: stringToUUID(evalId),
-            question_id: questionUuid,
-            session_id: stringToUUID(sessionId),
-            score: evaluation.score,
-            clarity_rating: evaluation.clarityRating,
-            feedback: evaluation.feedback,
-            missing_points: evaluation.missingPoints,
-            suggested_answer: evaluation.suggestedAnswer,
-            evaluated_at: evaluation.evaluatedAt
-          }));
-        } catch (e) {
-          logger.warn('🔮 [InterviewService] Failed to record answer/evaluation in Supabase:', e);
+      if (jobs.length > 0) {
+        const scored = await runEvaluationJobs(jobs, (job) =>
+          InterviewService.scoreJob(session, job, agent, userId)
+        );
+        for (const row of scored) {
+          session.evaluations[row.questionId] = row.result;
+          await InterviewService.persistEvaluationRecord(sessionId, row.result);
         }
       }
 
-      const allAnswered = session.questions.every(q => session.answers[q.id]);
-      if (allAnswered) {
-        session.status = 'completed';
-
-        const totalScore = Object.values(session.evaluations).reduce((sum, e) => sum + e.score, 0);
-        session.coachingReport = {
-          overallScore: Math.round(totalScore / session.questions.length),
-          domainStrengths: ['System Observability', 'Technical Articulation'],
-          domainWeaknesses: ['Distributed Tracing details', 'Scalable Backpressure Management'],
-          recommendedTopics: [
-            { topic: 'OpenTelemetry Context Propagation', priority: 'high' },
-            { topic: 'Database Query & Index Optimization', priority: 'medium' }
-          ],
-          summary: `Excellent overall performance. You demonstrate a robust grasp of production engineering principles and architectural boundaries.`
-        };
-
-        if (supabase) {
-          try {
-            await unwrap(supabase.from('interview_sessions').update({
-              status: 'completed',
-              overall_score: session.coachingReport.overallScore,
-              coaching_summary: session.coachingReport.summary,
-              coaching_report: session.coachingReport,
-              updated_at: now
-            }).eq('id', stringToUUID(sessionId)));
-          } catch (e) {
-            logger.warn('🔮 [InterviewService] Failed to complete session in Supabase:', e);
-          }
-        }
-
-        const userProgress = db.progress.get(userId) || [];
-
-        for (const q of session.questions) {
-          const evalScore = session.evaluations[q.id]?.score || 80;
-          const existingTopic = userProgress.find(p => p.topic === q.topic);
-          let newCount = 1;
-          let newConf = evalScore;
-
-          if (existingTopic) {
-            existingTopic.sessionCount += 1;
-            existingTopic.confidenceScore = Math.round((existingTopic.confidenceScore + evalScore) / 2);
-            existingTopic.lastPracticedAt = now;
-            newCount = existingTopic.sessionCount;
-            newConf = existingTopic.confidenceScore;
-          } else {
-            userProgress.push({
-              id: 'prog-' + Math.random().toString(36).substr(2, 9),
-              userId,
-              topic: q.topic,
-              confidenceScore: evalScore,
-              sessionCount: 1,
-              lastPracticedAt: now
-            });
-          }
-
-          if (supabase) {
-            try {
-              await unwrap(supabase.from('learning_progress').upsert({
-                user_id: stringToUUID(userId),
-                topic: q.topic,
-                confidence_score: newConf,
-                session_count: newCount,
-                last_practiced_at: now,
-                updated_at: now
-              }, { onConflict: 'user_id,topic' }));
-            } catch (e) {
-              logger.warn('🔮 [InterviewService] Failed to update learning_progress in Supabase:', e);
-            }
-          }
-        }
-        db.progress.set(userId, userProgress);
-      }
-
+      await InterviewService.completeSession(sessionId, session, userId, now);
       db.sessions.set(sessionId, session);
-      span.end('OK', { 'evaluation.score': score, 'session.status': session.status });
-
-      return { session, evaluation };
+      span.end('OK', {
+        'evaluation.jobs': jobs.length,
+        'session.status': session.status
+      });
+      return { session };
     } catch (err: any) {
       span.recordException(err);
       throw err;
     }
+  }
+
+  private static async scoreJob(
+    session: InterviewSession,
+    job: EvaluationJob,
+    agent: EvaluationAgentLike,
+    userId: string
+  ): Promise<Evaluation> {
+    const question = session.questions.find((q) => q.id === job.questionId);
+    let score = Math.floor(Math.random() * 25) + 70;
+    let feedback = `Strong response. You accurately identified key domain concepts for ${question?.topic || job.questionId}. Make sure to detail telemetry metrics and edge case handling downstream.`;
+    let missingConcepts = ['Tracing context propagation across services', 'Resource-bound backpressure handles'];
+    let idealAnswer = 'To enhance this answer, elaborate on telemetry metadata spans and explicit error boundary resilience mechanisms.';
+    let aiEvalSuccess = false;
+
+    try {
+      const evalResult = await agent.evaluateAnswer(
+        job.questionText,
+        job.answerText,
+        job.expectedConcepts,
+        userId
+      );
+      score = evalResult.score;
+      feedback = evalResult.feedback || feedback;
+      missingConcepts = evalResult.missingConcepts.length > 0 ? evalResult.missingConcepts : missingConcepts;
+      idealAnswer = evalResult.idealAnswer || idealAnswer;
+      aiEvalSuccess = true;
+    } catch (aiErr) {
+      logger.warn('🔮 [InterviewService] EvaluationAgent call failed, using baseline evaluator:', aiErr);
+    }
+
+    const evaluation = storedEvaluationFromResult(
+      job.questionId,
+      { score, strengths: [], weaknesses: [], missingConcepts, feedback, idealAnswer },
+      new Date().toISOString(),
+      'ev-' + Math.random().toString(36).substr(2, 9)
+    );
+
+    if (!aiEvalSuccess) {
+      recordMetric.recordEvaluationCompleted(1, { 'evaluation.score': score });
+    }
+    return evaluation;
+  }
+
+  private static async persistAnswerRecord(
+    sessionId: string,
+    session: InterviewSession,
+    questionId: string,
+    answerText: string,
+    userId: string
+  ) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const question = session.questions.find((q) => q.id === questionId);
+    if (!question) return;
+    const now = new Date().toISOString();
+    try {
+      const questionUuid = stringToUUID(sessionId + '-' + questionId);
+      const { data: existingQuestion } = await supabase
+        .from('generated_questions')
+        .select('id')
+        .eq('id', questionUuid)
+        .maybeSingle();
+
+      if (!existingQuestion) {
+        const qIndex = session.questions.findIndex((q) => q.id === questionId);
+        await unwrap(supabase.from('generated_questions').upsert({
+          id: questionUuid,
+          session_id: stringToUUID(sessionId),
+          question_text: question.questionText,
+          type: InterviewService.sanitizeQuestionType(question.type),
+          topic: question.topic || question.type || 'General',
+          difficulty: InterviewService.sanitizeDifficulty(question.difficulty),
+          expected_concepts: question.expectedConcepts,
+          order_index: qIndex >= 0 ? qIndex : 0
+        }));
+      }
+
+      await unwrap(supabase.from('answers').upsert({
+        id: stringToUUID(sessionId + '-ans-' + questionId),
+        question_id: questionUuid,
+        session_id: stringToUUID(sessionId),
+        user_id: stringToUUID(userId),
+        answer_text: answerText,
+        submitted_at: now
+      }));
+    } catch (e) {
+      logger.warn('🔮 [InterviewService] Failed to record answer in Supabase:', e);
+    }
+  }
+
+  private static async persistEvaluationRecord(
+    sessionId: string,
+    evaluation: Evaluation
+  ) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    try {
+      const questionUuid = stringToUUID(sessionId + '-' + evaluation.questionId);
+      await unwrap(supabase.from('evaluations').upsert({
+        id: stringToUUID(evaluation.id),
+        question_id: questionUuid,
+        session_id: stringToUUID(sessionId),
+        score: evaluation.score,
+        clarity_rating: evaluation.clarityRating,
+        feedback: evaluation.feedback,
+        missing_points: evaluation.missingPoints,
+        suggested_answer: evaluation.suggestedAnswer,
+        evaluated_at: evaluation.evaluatedAt
+      }));
+    } catch (e) {
+      logger.warn('🔮 [InterviewService] Failed to record evaluation in Supabase:', e);
+    }
+  }
+
+  private static async completeSession(
+    sessionId: string,
+    session: InterviewSession,
+    userId: string,
+    now: string
+  ) {
+    if (session.status === 'completed' && session.coachingReport) {
+      return;
+    }
+    session.status = 'completed';
+    const totalScore = Object.values(session.evaluations).reduce((sum, e) => sum + e.score, 0);
+    session.coachingReport = {
+      overallScore: Math.round(totalScore / session.questions.length),
+      domainStrengths: ['System Observability', 'Technical Articulation'],
+      domainWeaknesses: ['Distributed Tracing details', 'Scalable Backpressure Management'],
+      recommendedTopics: [
+        { topic: 'OpenTelemetry Context Propagation', priority: 'high' },
+        { topic: 'Database Query & Index Optimization', priority: 'medium' }
+      ],
+      summary: 'Excellent overall performance. You demonstrate a robust grasp of production engineering principles and architectural boundaries.'
+    };
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await unwrap(supabase.from('interview_sessions').update({
+          status: 'completed',
+          overall_score: session.coachingReport.overallScore,
+          coaching_summary: session.coachingReport.summary,
+          coaching_report: session.coachingReport,
+          updated_at: now
+        }).eq('id', stringToUUID(sessionId)));
+      } catch (e) {
+        logger.warn('🔮 [InterviewService] Failed to complete session in Supabase:', e);
+      }
+    }
+
+    const userProgress = db.progress.get(userId) || [];
+    for (const q of session.questions) {
+      const evalScore = session.evaluations[q.id]?.score || 80;
+      const existingTopic = userProgress.find((p) => p.topic === q.topic);
+      let newCount = 1;
+      let newConf = evalScore;
+
+      if (existingTopic) {
+        existingTopic.sessionCount += 1;
+        existingTopic.confidenceScore = Math.round((existingTopic.confidenceScore + evalScore) / 2);
+        existingTopic.lastPracticedAt = now;
+        newCount = existingTopic.sessionCount;
+        newConf = existingTopic.confidenceScore;
+      } else {
+        userProgress.push({
+          id: 'prog-' + Math.random().toString(36).substr(2, 9),
+          userId,
+          topic: q.topic,
+          confidenceScore: evalScore,
+          sessionCount: 1,
+          lastPracticedAt: now
+        });
+      }
+
+      if (supabase) {
+        try {
+          await unwrap(supabase.from('learning_progress').upsert({
+            user_id: stringToUUID(userId),
+            topic: q.topic,
+            confidence_score: newConf,
+            session_count: newCount,
+            last_practiced_at: now,
+            updated_at: now
+          }, { onConflict: 'user_id,topic' }));
+        } catch (e) {
+          logger.warn('🔮 [InterviewService] Failed to update learning_progress in Supabase:', e);
+        }
+      }
+    }
+    db.progress.set(userId, userProgress);
   }
 
   static async getHistory(currentUser?: { id?: string }): Promise<InterviewSession[]> {

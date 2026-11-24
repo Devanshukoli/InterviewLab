@@ -7,6 +7,7 @@ import {
   uploadResumeSchema,
   uploadJobDescriptionSchema,
   generateQuestionsSchema,
+  submitAnswerSchema,
   evaluateSchema,
   updateResumeSchema,
 } from '../../dtos/interview.dto';
@@ -20,6 +21,7 @@ interviewRouter.post('/upload-resume-file', uploadResumeFile.single('file'), Int
 interviewRouter.put('/resume/:id', uploadResumeFile.single('file'), validateBody(updateResumeSchema), InterviewController.updateResume);
 interviewRouter.post('/upload-job-description', validateBody(uploadJobDescriptionSchema), InterviewController.uploadJobDescription);
 interviewRouter.post('/generate-questions', validateBody(generateQuestionsSchema), InterviewController.generateQuestions);
+interviewRouter.post('/answer', validateBody(submitAnswerSchema), InterviewController.submitAnswer);
 interviewRouter.post('/evaluate', validateBody(evaluateSchema), InterviewController.evaluate);
 interviewRouter.get('/history', InterviewController.getHistory);
 interviewRouter.get('/session/:id', InterviewController.getSession);
