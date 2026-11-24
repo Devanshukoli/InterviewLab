@@ -137,10 +137,10 @@ export function validateAndNormalizeJDAnalysis(obj: any): {
  * JDAgent analyzes job descriptions using the configured LLM provider.
  */
 export class JDAgent {
-  private providerName: string;
+  private providerName?: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName;
   }
 
   /**

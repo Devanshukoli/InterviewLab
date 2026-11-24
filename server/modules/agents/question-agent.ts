@@ -261,11 +261,11 @@ export function validateAndNormalizeQuestionResult(
  * QuestionAgent synthesizes structured interview questions based on resume, gap analysis, and session params.
  */
 export class QuestionAgent {
-  private providerName: string;
+  private providerName?: string;
   private customProvider?: any;
 
   constructor(providerName?: string, customProvider?: any) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName;
     this.customProvider = customProvider;
   }
 

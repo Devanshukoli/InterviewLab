@@ -147,10 +147,10 @@ export function validateAndNormalizeCoachResult(obj: any): {
  * CoachAgent analyzes evaluation results and interview history to generate actionable coaching guidance.
  */
 export class CoachAgent {
-  private providerName: string;
+  private providerName?: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName;
   }
 
   /**

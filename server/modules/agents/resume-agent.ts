@@ -172,10 +172,10 @@ export function attachEmploymentGaps(data: ResumeAnalysisResult, resumeText: str
  * ResumeAgent analyzes uploaded resume text using the configured LLM provider.
  */
 export class ResumeAgent {
-  private providerName: string;
+  private providerName?: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName;
   }
 
   /**

@@ -165,10 +165,10 @@ export function validateAndNormalizeEvaluationResult(obj: any): {
  * EvaluationAgent grades candidate interview responses against questions and expected topics.
  */
 export class EvaluationAgent {
-  private providerName: string;
+  private providerName?: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName;
   }
 
   /**

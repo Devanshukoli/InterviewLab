@@ -160,10 +160,10 @@ export function validateAndNormalizeGapAnalysis(obj: any): {
  * GapAgent compares candidate resume data with job descriptions to identify skill gaps and recommended topics.
  */
 export class GapAgent {
-  private providerName: string;
+  private providerName?: string;
 
   constructor(providerName?: string) {
-    this.providerName = providerName || 'gemini';
+    this.providerName = providerName;
   }
 
   /**

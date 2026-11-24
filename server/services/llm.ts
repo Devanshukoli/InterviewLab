@@ -5,7 +5,8 @@ import { recordMetric, logger } from '../observability';
 import { AppError } from '../middleware/error_handling';
 import { ByokService } from '../api/byok/byok.service';
 import { decryptApiKey } from '../api/auth/utils/crypto';
-import { Provider, DEFAULT_MODEL_PER_PROVIDER } from './model-registry';
+import { Provider } from './model-registry';
+import { selectByokLlmTarget } from './byok-llm-target';
 
 export interface LLMProvider {
   name: Provider;
@@ -207,29 +208,22 @@ export async function getLlmClientForUser(userId: string, requestedProvider?: st
     throw new AppError('No valid API key configured for this user. Please configure at least one API key in Settings before starting an interview session.', 403);
   }
 
-  let targetKey = requestedProvider ? validKeys.find(k => k.provider === requestedProvider) : undefined;
-  if (!targetKey) {
-    targetKey = validKeys.find(k => k.isPrimary);
-  }
-  if (!targetKey) {
-    targetKey = validKeys[0];
-    if (targetKey) {
-      try {
-        await ByokService.setPrimary(userId, targetKey.provider);
-        targetKey = { ...targetKey, isPrimary: true };
-      } catch (err) {
-        logger.warn('Failed to persist interview provider after primary fallback:', err);
-      }
+  const selected = selectByokLlmTarget(validKeys, requestedProvider);
+  if (!validKeys.some((key) => key.isPrimary)) {
+    try {
+      await ByokService.setPrimary(userId, selected.provider);
+    } catch (err) {
+      logger.warn('Failed to persist interview provider after primary fallback:', err);
     }
   }
 
-  const record = await ByokService.getKeyRecord(userId, targetKey.provider);
+  const record = await ByokService.getKeyRecord(userId, selected.provider);
   if (!record || !record.isValid) {
-    throw new AppError(`No valid ${targetKey.provider.toUpperCase()} API key configured for this user.`, 403);
+    throw new AppError(`No valid ${selected.provider.toUpperCase()} API key configured for this user.`, 403);
   }
 
   const apiKey = decryptApiKey(record.encryptedKey);
-  const model = record.preferredModel || DEFAULT_MODEL_PER_PROVIDER[record.provider];
+  const model = record.preferredModel || selected.model;
 
   return instantiateProviderClient(record.provider, apiKey, model, userId);
 }
