@@ -42,7 +42,6 @@ export default function DashboardView({
   onSelectSession
 }: DashboardViewProps) {
 
-  // Calculate quick stats
   const completedSessions = sessions.filter(s => s.status === 'completed');
   const avgScore = completedSessions.length > 0 
     ? Math.round(completedSessions.reduce((acc, s) => acc + (s.coachingReport?.overallScore || 0), 0) / completedSessions.length)
@@ -55,7 +54,6 @@ export default function DashboardView({
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12">
       
-      {/* 1. Welcome Card */}
       <div className="border border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-zinc-900 via-zinc-950 to-zinc-900 dark:from-zinc-950 dark:via-[#0c0c0e] dark:to-zinc-950 rounded-xl p-6 sm:p-8 relative overflow-hidden shadow-sm">
         <div className="max-w-2xl space-y-3 relative z-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-800/80 border border-zinc-700 text-[10px] font-mono text-zinc-300">
@@ -87,7 +85,6 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* 2. Quick Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-white dark:bg-[#0c0c0e] shadow-sm space-y-1">
           <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">Total Sessions</span>
@@ -112,7 +109,6 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* 3. Continue Previous Interview Card (if active session exists) */}
       {inProgressSession && (
         <div className="p-5 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-950/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -235,7 +231,6 @@ export default function DashboardView({
           </div>
         </div>
 
-      {/* 6. Placeholders for Future Features */}
       <div className="pt-4 space-y-3">
         <h3 className="text-xs font-mono uppercase tracking-widest text-zinc-500 font-bold">Planned Capabilities</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
