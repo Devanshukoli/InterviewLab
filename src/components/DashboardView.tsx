@@ -5,16 +5,12 @@ import {
   FileText, 
   TrendingUp, 
   History, 
-  ArrowRight, 
-  CheckCircle2, 
   Clock, 
-  Plus, 
   Users, 
   Bot, 
   CreditCard, 
   Code2, 
-  ChevronRight,
-  BookOpen
+  ChevronRight
 } from 'lucide-react';
 import { InterviewSession, SavedResume, ProgressMetric, UserProfile } from '../types';
 
@@ -142,11 +138,7 @@ export default function DashboardView({
         </div>
       )}
 
-      {/* 4. Split Grid: Previous Sessions & Resume Library */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Previous Interview Sessions (2 cols) */}
-        <div className="lg:col-span-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] rounded-xl overflow-hidden flex flex-col shadow-sm">
+      <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] rounded-xl overflow-hidden flex flex-col shadow-sm">
           <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <History className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
@@ -210,59 +202,7 @@ export default function DashboardView({
           </div>
         </div>
 
-        {/* Resume Library Quick Panel (1 col) */}
-        <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] rounded-xl overflow-hidden flex flex-col shadow-sm">
-          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-200">Resume Library</h2>
-            </div>
-            <button 
-              onClick={onViewResumes}
-              className="text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-semibold"
-            >
-              Library
-            </button>
-          </div>
-
-          <div className="p-4 space-y-3 flex-1">
-            {resumes.length === 0 ? (
-              <div className="p-6 text-center space-y-2 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-lg">
-                <p className="text-xs text-zinc-500">No resumes saved in library.</p>
-                <button 
-                  onClick={onViewResumes}
-                  className="text-xs text-zinc-900 dark:text-white font-semibold hover:underline cursor-pointer"
-                >
-                  Upload Resume
-                </button>
-              </div>
-            ) : (
-              resumes.slice(0, 3).map(resume => (
-                <div key={resume.id} className="p-3 bg-zinc-50 dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800/80 rounded-lg space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-200 truncate">{resume.title}</span>
-                    <span className="text-[9px] font-mono text-zinc-500 uppercase">{resume.fileType}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {resume.skills.slice(0, 3).map((skill, idx) => (
-                      <span key={idx} className="text-[9px] font-mono bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-700 dark:text-zinc-400 px-1.5 py-0.5 rounded">
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {/* 5. Learning Progress Overview & Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Learning Progress Cards (2 cols) */}
-        <div className="lg:col-span-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] rounded-xl p-5 space-y-4 shadow-sm">
+      <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] rounded-xl p-5 space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-400" />
@@ -294,39 +234,6 @@ export default function DashboardView({
             )}
           </div>
         </div>
-
-        {/* Recent Activity Timeline (1 col) */}
-        <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] rounded-xl p-5 space-y-4 shadow-sm">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-            Recent Activity
-          </h2>
-
-          <div className="space-y-3 font-mono text-xs">
-            <div className="flex items-start gap-3 border-l-2 border-blue-500 pl-3 py-1">
-              <div>
-                <span className="text-zinc-900 dark:text-zinc-200 block text-xs font-sans font-medium">Resume Uploaded</span>
-                <span className="text-[10px] text-zinc-500">2 hours ago</span>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 border-l-2 border-green-500 pl-3 py-1">
-              <div>
-                <span className="text-zinc-900 dark:text-zinc-200 block text-xs font-sans font-medium">Practice Interview Completed</span>
-                <span className="text-[10px] text-zinc-500">Yesterday</span>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 border-l-2 border-zinc-400 dark:border-zinc-700 pl-3 py-1">
-              <div>
-                <span className="text-zinc-900 dark:text-zinc-200 block text-xs font-sans font-medium">Account Profile Updated</span>
-                <span className="text-[10px] text-zinc-500">3 days ago</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
 
       {/* 6. Placeholders for Future Features */}
       <div className="pt-4 space-y-3">
