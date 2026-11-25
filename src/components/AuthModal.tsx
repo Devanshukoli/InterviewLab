@@ -757,14 +757,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               {mode === 'signin' ? (
                 <span>
                   Don't have an account?{' '}
-                  <button onClick={() => setMode('signup')} className="text-zinc-200 font-semibold hover:underline cursor-pointer">
+                  <button onClick={() => setMode('signup')} className="text-zinc-900 dark:text-zinc-100 font-semibold hover:underline cursor-pointer">
                     Sign Up
                   </button>
                 </span>
               ) : (
                 <span>
                   Already have an account?{' '}
-                  <button onClick={() => setMode('signin')} className="text-zinc-200 font-semibold hover:underline cursor-pointer">
+                  <button onClick={() => setMode('signin')} className="text-zinc-900 dark:text-zinc-100 font-semibold hover:underline cursor-pointer">
                     Sign In
                   </button>
                 </span>
